@@ -65,7 +65,7 @@ ESLint rules:
 ## Vue.js
 
 - Use Composition API (not Options API)
-- Use alias paths (`@/`) for imports
+- Always use relative paths for imports (not alias paths like `@/`)
 - Use `emit` instead of passing functions as props
 - Prefer `ref` over `reactive`
 - Never use `v-html` (security risk)
