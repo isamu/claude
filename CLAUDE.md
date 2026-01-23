@@ -75,3 +75,50 @@ ESLint rules:
 
 - Use Node.js native `node:test` and `node:assert` for testing
 - Mock external APIs (tests should run without API keys)
+
+## npm Package Release
+
+When releasing a new version of an npm package:
+
+**IMPORTANT**: Confirm with user before each step.
+
+### Steps
+
+1. **Sync with remote**:
+   ```bash
+   git pull origin main
+   ```
+2. **Bump version** in package.json (patch/minor/major)
+3. **Install and validate**:
+   ```bash
+   yarn install
+   yarn typecheck  # if available
+   yarn lint
+   yarn build
+   ```
+4. **Publish to npm**:
+   ```bash
+   npm publish --access public
+   ```
+5. **Commit changes** (add files individually, NOT `git add -A`):
+   ```bash
+   git add package.json yarn.lock
+   git commit -m "@package-name@version"
+   git push origin main
+   ```
+6. **Create git tag** (NO "v" prefix):
+   ```bash
+   git tag "1.0.0"
+   git push origin "1.0.0"
+   ```
+7. **Create GitHub release**:
+   ```bash
+   gh release create "1.0.0" --generate-notes --title "1.0.0"
+   ```
+
+### Important Rules
+
+- Tag format: `1.0.0` (NOT `v1.0.0`)
+- Commit message format: `@package-name@version` (e.g., `@gui-chat-plugin/todo@0.1.1`)
+- Use `git pull origin main` for syncing (NEVER `git rebase`)
+- Add files individually (NEVER `git add -A` or `git add .`)
