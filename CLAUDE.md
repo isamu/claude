@@ -19,6 +19,7 @@ NEVER perform git commit, push, or other git operations without explicit user pe
 - Read-only operations like `git status`, `git diff`, `git log` are OK
 - NEVER use `git add .` or `git add <directory>` - always add files individually
 - There may be work-in-progress files that should not be committed
+- NEVER delete untracked files - they may be temporary work files or intentionally kept outside version control
 - Commit message prefixes: `feat:`, `fix:`, `refactor:`, `docs:`, `chore:`
 - NEVER use `git rebase`
 - NEVER use `git push --force`
@@ -75,6 +76,16 @@ ESLint rules:
 
 - Use Node.js native `node:test` and `node:assert` for testing
 - Mock external APIs (tests should run without API keys)
+- For logic changes, write unit tests covering various patterns:
+  - Normal cases (expected inputs)
+  - Edge cases (boundary values, empty inputs)
+  - Error cases (invalid/corrupted data, wrong types)
+  - Null/undefined handling
+- Test file organization:
+  - Place tests in `test/` directory at repository root
+  - File naming: `test_xxx.ts` (e.g., `test_parser.ts`, `test_utils.ts`)
+  - For large repositories, split into subdirectories (e.g., `test/api/`, `test/utils/`)
+- Add `test` script to package.json and run tests in CI
 
 ## npm Package Release
 
