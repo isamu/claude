@@ -133,3 +133,27 @@ When releasing a new version of an npm package:
 - Commit message format: `@package-name@version` (e.g., `@gui-chat-plugin/todo@0.1.1`)
 - Use `git pull origin main` for syncing (NEVER `git rebase`)
 - Add files individually (NEVER `git add -A` or `git add .`)
+
+### Pre-publish Checks
+
+Before running `npm publish`, verify:
+
+1. **No `file:` dependencies**: Check that package.json does not contain `"file:"` in dependencies/devDependencies (local path references must not be published). If found, **STOP and do not publish**.
+2. **No debug code**: Search for and remove:
+   - `console.log`, `console.debug` (except intentional logging)
+   - `debugger` statements
+3. **TODO/FIXME comments**: If found, ask the user for confirmation. Proceed with publish only if user approves.
+
+## Web Design with Playwright
+
+When modifying web design (CSS, HTML, layouts):
+
+1. Use `browser_navigate` to open the page
+2. Use `browser_snapshot` to get DOM structure (preferred for understanding layout)
+3. Use `browser_take_screenshot` to capture visual state
+4. Make code changes
+5. Refresh and verify with screenshot
+
+Useful tools:
+- `browser_resize` - Test responsive design at different breakpoints
+- `browser_evaluate` - Inspect computed styles via JavaScript
