@@ -15,6 +15,9 @@ Use **yarn** instead of npm.
 
 NEVER perform git commit, push, or other git operations without explicit user permission.
 
+- **ALWAYS check current branch** before making changes with `git branch` or `git status`
+  - If the branch is different from expected, ask the user which branch to use
+  - User may be working on multiple branches in parallel
 - Always ask before running: `git commit`, `git push`, `git merge`, `git rebase`, etc.
 - Read-only operations like `git status`, `git diff`, `git log` are OK
 - NEVER use `git add .` or `git add <directory>` - always add files individually
