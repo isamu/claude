@@ -54,6 +54,17 @@ ESLint rules:
 
 ## Coding Style
 
+### Philosophy: Code for Human Comprehension
+
+Human context and memory are limited. Always write code with this in mind:
+
+- **Compact functions**: Split into small, focused functions that humans can fully comprehend at a glance
+- **Clear naming**: Function and variable names should tell a story; a beginner should understand the flow
+- **Minimal scope**: Keep variable scope as small as possible to reduce cognitive load
+- **Readable flow**: Code should read like a narrative - the sequence of function calls and variable assignments should make the intent obvious
+
+### Rules
+
 - Keep functions under 20 lines; split into smaller functions if needed
 - Prefer `const` over `let`; never use `var`
 - Prefer functional approaches (`forEach`, `map`, `filter`, `reduce`) over `for` loops
@@ -157,3 +168,19 @@ When modifying web design (CSS, HTML, layouts):
 Useful tools:
 - `browser_resize` - Test responsive design at different breakpoints
 - `browser_evaluate` - Inspect computed styles via JavaScript
+
+## TypeScript Best Practices
+
+- Avoid `as` type casts; use type guards instead (e.g., `const isXxx = (x: unknown): x is Type => { ... }`)
+- Use existing utility functions from libraries (e.g., `isObject` from graphai) instead of writing your own
+- Use `z.infer<typeof schema>` to derive types from Zod schemas; don't define duplicate local types
+- When building strings with `const`, use array + `push()` + `join()` pattern instead of `let` + `+=`
+- Separate pure data transformation functions into their own files for reusability and testability
+- Use descriptive format names (e.g., "object format" vs "text format") instead of "new/legacy"
+
+## Continuous Learning
+
+When learning something new during a session that should be remembered:
+1. Confirm with the user before adding to this file
+2. Add the learning to the appropriate section (or create a new section if needed)
+3. Keep entries concise and actionable
