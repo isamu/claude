@@ -218,3 +218,14 @@ When learning something new during a session that should be remembered:
 1. Confirm with the user before adding to this file
 2. Add the learning to the appropriate section (or create a new section if needed)
 3. Keep entries concise and actionable
+
+## Automation Proposals
+
+When the same instruction or pattern is given 2+ times in a session:
+1. Recognize the repetition and propose automation
+2. Choose the most appropriate method:
+   - **CLAUDE.md**: For rules, guidelines, or workflows (e.g., release process, coding standards)
+   - **Skill/Command**: For executable actions that can be parameterized (e.g., `/release`, `/deploy`)
+   - **Script**: For complex multi-step operations that benefit from scripting
+3. Explain the trade-offs and let the user decide
+4. After implementation, confirm it works as expected
