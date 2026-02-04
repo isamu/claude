@@ -18,6 +18,9 @@ NEVER perform git commit, push, or other git operations without explicit user pe
 - **ALWAYS check current branch** before making changes with `git branch` or `git status`
   - If the branch is different from expected, ask the user which branch to use
   - User may be working on multiple branches in parallel
+- **Create a feature branch** before starting implementation work
+  - Commit after each meaningful change (e.g., schema done → commit, utility functions done → commit)
+  - This makes PRs easier to review and enables incremental progress tracking
 - Always ask before running: `git commit`, `git push`, `git merge`, `git rebase`, etc.
 - Read-only operations like `git status`, `git diff`, `git log` are OK
 - NEVER use `git add .` or `git add <directory>` - always add files individually
@@ -26,7 +29,6 @@ NEVER perform git commit, push, or other git operations without explicit user pe
 - Commit message prefixes: `feat:`, `fix:`, `refactor:`, `docs:`, `chore:`
 - NEVER use `git rebase`
 - NEVER use `git push --force`
-- Commit frequently with meaningful changes (small PRs are easier to review)
 
 ## Code Quality
 
@@ -35,6 +37,14 @@ After making code changes, always run:
 1. `yarn format` - Format code with Prettier
 2. `yarn lint` - Check for linting errors
 3. `yarn build` - Verify build succeeds
+
+## Documentation Maintenance
+
+When implementing or modifying CLI commands or other user-facing features:
+
+- **Always check README.md** after changes and update it to reflect the correct specification
+- Ensure command examples, options, and usage instructions are accurate
+- Update CLAUDE.md/AGENTS.md if they contain relevant CLI documentation
 
 ## New Project Setup
 
@@ -76,6 +86,9 @@ Human context and memory are limited. Always write code with this in mind:
 - No magic numbers; use named constants
 - Include units in variable names when applicable (e.g., `timeout_ms`, `distance_km`)
 - Follow DRY principle (Don't Repeat Yourself)
+- **Error handling**: Always add try/catch for operations that can fail
+  - Network requests (fetch, API calls) must include timeout handling with AbortController
+  - Provide meaningful error messages with context (URL, file path, etc.)
 
 ## Vue.js
 
@@ -136,10 +149,28 @@ When releasing a new version of an npm package:
    git tag "1.0.0"
    git push origin "1.0.0"
    ```
-7. **Create GitHub release**:
-   ```bash
-   gh release create "1.0.0" --generate-notes --title "1.0.0"
-   ```
+7. **Create GitHub release with highlights**:
+   - First, check merged PRs since last tag to identify key features:
+     ```bash
+     gh release view <previous-tag>  # See what PRs were included
+     ```
+   - Create release with highlights prepended to auto-generated notes:
+     ```bash
+     gh release create "1.0.0" --generate-notes --title "1.0.0" --notes "$(cat <<'EOF'
+     ## ✨ Highlights
+
+     - **Feature Name**: Brief description of the feature
+
+     📖 **Sample**: [Example Link](https://github.com/org/repo/blob/main/path/to/sample.json)
+
+     ---
+
+     EOF
+     )"
+     ```
+   - The `--notes` content is prepended to `--generate-notes` output
+   - Include links to docs/samples when available
+   - For code examples, use fenced code blocks in the notes
 
 ### Important Rules
 
