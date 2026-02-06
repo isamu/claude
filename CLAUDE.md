@@ -65,6 +65,55 @@ ESLint rules:
 - Line endings: Unix (LF)
 - Unused variables: prefix with `__` to ignore
 
+### TypeScript ESM Configuration
+
+For TypeScript projects, use ESM with `.js` extensions in imports:
+
+**tsconfig.json** (key settings):
+```json
+{
+  "compilerOptions": {
+    "target": "es2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "declaration": true,
+    "outDir": "./lib",
+    "strict": true
+  }
+}
+```
+
+**package.json** (key settings):
+```json
+{
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/index.d.ts",
+      "default": "./lib/index.js"
+    }
+  }
+}
+```
+
+**Import statements** - Always use `.js` extension (even for `.ts` files):
+```typescript
+// Correct
+export * from "./actions/index.js";
+import { foo } from "./utils/helper.js";
+
+// Wrong - will fail at runtime
+export * from "./actions/index";
+import { foo } from "./utils/helper.ts";
+```
+
+This configuration ensures:
+- TypeScript compiles to ESM
+- Node.js resolves modules correctly at runtime
+- Package consumers get proper type definitions
+
 ## Coding Style
 
 ### Philosophy: Code for Human Comprehension
