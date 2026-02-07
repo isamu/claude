@@ -205,6 +205,25 @@ Human context and memory are limited. Always write code with this in mind:
   - For large repositories, split into subdirectories (e.g., `test/api/`, `test/utils/`)
 - Add `test` script to package.json and run tests in CI
 
+### CI / Cross-Platform Compatibility
+
+CI should work on **Linux, Windows, and macOS** whenever possible.
+
+- Use `node:path` with `path.join()` / `path.resolve()` instead of hardcoded `/` or `\\` separators
+- Use `node:url` (`fileURLToPath`, `pathToFileURL`) for file URL conversions
+- Avoid shell-specific syntax in npm scripts (no `rm -rf`, `cp`, `&&` chaining that differs across shells); use cross-platform alternatives:
+  - `rimraf` instead of `rm -rf`
+  - `shx` or `cpy-cli` instead of `cp` / `mv`
+  - Or use Node.js scripts for complex build steps
+- Do not rely on case-sensitive file systems (macOS/Windows are case-insensitive by default)
+- Use `node:os` for platform-specific logic when unavoidable
+- In GitHub Actions, include all three runners in the matrix:
+  ```yaml
+  strategy:
+    matrix:
+      os: [ubuntu-latest, windows-latest, macos-latest]
+  ```
+
 ## npm Package Release
 
 When releasing a new version of an npm package:
