@@ -27,8 +27,24 @@ NEVER perform git commit, push, or other git operations without explicit user pe
 - There may be work-in-progress files that should not be committed
 - NEVER delete untracked files - they may be temporary work files or intentionally kept outside version control
 - Commit message prefixes: `feat:`, `fix:`, `refactor:`, `docs:`, `chore:`
+- NEVER push directly to main. Always create a feature branch and open a PR
+- When asked to 'create a PR' or 'PR、マージ', this means CREATE a pull request, not merge it
+- Always confirm the correct default/target branch before creating PRs
 - NEVER use `git rebase`
 - NEVER use `git push --force`
+
+## Change Scope Rules
+
+- Only make changes that were explicitly requested. Do NOT autonomously add features, tools, packages, or content
+- If you think something additional should be added, ASK first
+- Do not over-elaborate PR comments, commit messages, or documentation — keep them concise unless asked otherwise
+
+## Debugging Approach
+
+- When a test or command fails, diagnose the ROOT CAUSE before attempting fixes
+- Do NOT try quick-fix approaches (hardcoding values, JSON workarounds) — properly investigate the issue first
+- Check git history/diffs when investigating regressions
+- When user reports a failing command, understand what they're asking before jumping to debug
 
 ## Code Quality
 
@@ -45,6 +61,8 @@ When implementing or modifying CLI commands or other user-facing features:
 - **Always check README.md** after changes and update it to reflect the correct specification
 - Ensure command examples, options, and usage instructions are accurate
 - Update CLAUDE.md/AGENTS.md if they contain relevant CLI documentation
+- When creating web documentation, generate proper web components (Vue/Astro) NOT plain markdown files, unless explicitly asked for markdown
+- When documenting APIs or tools, VERIFY the actual implementation before writing — do not guess API names or parameters
 
 ## New Project Setup
 
@@ -311,6 +329,7 @@ Useful tools:
 - When building strings with `const`, use array + `push()` + `join()` pattern instead of `let` + `+=`
 - Separate pure data transformation functions into their own files for reusability and testability
 - Use descriptive format names (e.g., "object format" vs "text format") instead of "new/legacy"
+- When migrating or upgrading packages, verify the correct API signatures for the TARGET version — do not assume old APIs still work
 
 ## Continuous Learning
 
