@@ -30,6 +30,7 @@ NEVER perform git commit, push, or other git operations without explicit user pe
 - NEVER push directly to main. Always create a feature branch and open a PR
 - When asked to 'create a PR' or 'PR、マージ', this means CREATE a pull request, not merge it
 - Always confirm the correct default/target branch before creating PRs
+- When merging PRs, use merge commit (`--merge`). Do NOT use squash merge
 - NEVER use `git rebase`
 - NEVER use `git push --force`
 
