@@ -123,21 +123,11 @@ When implementing library-like packages, always consider whether functions are *
 - Code depending on Node.js APIs (`fs`, `path`, `child_process`, etc.) stays Node-only
 - Separate entry points into `index.node.ts` and `index.browser.ts`
 
-**package.json** (dual export):
+Extend the basic package.json above: change `main` to `lib/index.node.js` and add a `./browser` export:
 ```json
-{
-  "type": "module",
-  "main": "lib/index.node.js",
-  "exports": {
-    ".": {
-      "types": "./lib/index.node.d.ts",
-      "default": "./lib/index.node.js"
-    },
-    "./browser": {
-      "types": "./lib/index.browser.d.ts",
-      "default": "./lib/index.browser.js"
-    }
-  }
+"exports": {
+  ".":        { "types": "./lib/index.node.d.ts",    "default": "./lib/index.node.js" },
+  "./browser": { "types": "./lib/index.browser.d.ts", "default": "./lib/index.browser.js" }
 }
 ```
 
