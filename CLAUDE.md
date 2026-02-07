@@ -114,6 +114,48 @@ This configuration ensures:
 - Node.js resolves modules correctly at runtime
 - Package consumers get proper type definitions
 
+### Node/Browser Dual Export
+
+When implementing library-like packages, always consider whether functions are **pure** (no Node.js-specific dependencies). Export browser-compatible code separately so it can run in both Node.js and browser environments.
+
+**Design principles**:
+- Pure functions (data transformation, validation, parsing) should be exported for browser use
+- Code depending on Node.js APIs (`fs`, `path`, `child_process`, etc.) stays Node-only
+- Separate entry points into `index.node.ts` and `index.browser.ts`
+
+**package.json** (dual export):
+```json
+{
+  "type": "module",
+  "main": "lib/index.node.js",
+  "exports": {
+    ".": {
+      "types": "./lib/index.node.d.ts",
+      "default": "./lib/index.node.js"
+    },
+    "./browser": {
+      "types": "./lib/index.browser.d.ts",
+      "default": "./lib/index.browser.js"
+    }
+  }
+}
+```
+
+**File structure example**:
+```
+src/
+  index.node.ts      # Node entry (re-exports everything)
+  index.browser.ts   # Browser entry (re-exports pure functions only)
+  utils/
+    parser.ts         # Pure function - available from browser
+    transform.ts      # Pure function - available from browser
+  node/
+    file_io.ts        # fs-dependent - Node only
+    cli.ts            # Node only
+```
+
+Reference: `mulmocast-cli/package.json` exports pattern
+
 ## Coding Style
 
 ### Philosophy: Code for Human Comprehension
