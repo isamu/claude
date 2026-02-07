@@ -62,6 +62,7 @@ When implementing or modifying CLI commands or other user-facing features:
 - **Always check README.md** after changes and update it to reflect the correct specification
 - Ensure command examples, options, and usage instructions are accurate
 - Update CLAUDE.md/AGENTS.md if they contain relevant CLI documentation
+- When specs are added or changed, always check the repository's README.md and docs/ for affected documentation, update them accordingly, and include the updates in the same commit
 - When creating web documentation, generate proper web components (Vue/Astro) NOT plain markdown files, unless explicitly asked for markdown
 - When documenting APIs or tools, VERIFY the actual implementation before writing — do not guess API names or parameters
 
