@@ -123,21 +123,11 @@ When implementing library-like packages, always consider whether functions are *
 - Code depending on Node.js APIs (`fs`, `path`, `child_process`, etc.) stays Node-only
 - Separate entry points into `index.node.ts` and `index.browser.ts`
 
-**package.json** (dual export):
+Extend the basic package.json above: change `main` to `lib/index.node.js` and add a `./browser` export:
 ```json
-{
-  "type": "module",
-  "main": "lib/index.node.js",
-  "exports": {
-    ".": {
-      "types": "./lib/index.node.d.ts",
-      "default": "./lib/index.node.js"
-    },
-    "./browser": {
-      "types": "./lib/index.browser.d.ts",
-      "default": "./lib/index.browser.js"
-    }
-  }
+"exports": {
+  ".":        { "types": "./lib/index.node.d.ts",    "default": "./lib/index.node.js" },
+  "./browser": { "types": "./lib/index.browser.d.ts", "default": "./lib/index.browser.js" }
 }
 ```
 
@@ -204,6 +194,25 @@ Human context and memory are limited. Always write code with this in mind:
   - File naming: `test_xxx.ts` (e.g., `test_parser.ts`, `test_utils.ts`)
   - For large repositories, split into subdirectories (e.g., `test/api/`, `test/utils/`)
 - Add `test` script to package.json and run tests in CI
+
+### CI / Cross-Platform Compatibility
+
+CI should work on **Linux, Windows, and macOS** whenever possible.
+
+- Use `node:path` with `path.join()` / `path.resolve()` instead of hardcoded `/` or `\\` separators
+- Use `node:url` (`fileURLToPath`, `pathToFileURL`) for file URL conversions
+- Avoid shell-specific syntax in npm scripts (no `rm -rf`, `cp`, `&&` chaining that differs across shells); use cross-platform alternatives:
+  - `rimraf` instead of `rm -rf`
+  - `shx` or `cpy-cli` instead of `cp` / `mv`
+  - Or use Node.js scripts for complex build steps
+- Do not rely on case-sensitive file systems (macOS/Windows are case-insensitive by default)
+- Use `node:os` for platform-specific logic when unavoidable
+- In GitHub Actions, include all three runners in the matrix:
+  ```yaml
+  strategy:
+    matrix:
+      os: [ubuntu-latest, windows-latest, macos-latest]
+  ```
 
 ## npm Package Release
 
