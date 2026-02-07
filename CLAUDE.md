@@ -203,11 +203,21 @@ Human context and memory are limited. Always write code with this in mind:
 
 - Use Node.js native `node:test` and `node:assert` for testing
 - Mock external APIs (tests should run without API keys)
-- For logic changes, write unit tests covering various patterns:
-  - Normal cases (expected inputs)
-  - Edge cases (boundary values, empty inputs)
-  - Error cases (invalid/corrupted data, wrong types)
-  - Null/undefined handling
+- For unit tests, cover the following patterns:
+  - Happy path (expected normal inputs)
+  - Edge cases (unusual but valid inputs)
+  - Corner cases (multiple edge conditions combined)
+  - Boundary cases (min/max values, off-by-one)
+  - Empty cases (empty string, empty array, empty object)
+  - Null/undefined cases
+  - Invalid input (wrong types, corrupted data)
+  - Error cases (expected failures, thrown exceptions)
+  - Negative cases (what should NOT happen)
+  - Regression tests (previously found bugs)
+- For CI integration tests (CLI execution, program output), use **golden tests**:
+  - Store the expected correct output (text, files) in git as golden files
+  - Compare actual output against golden files in CI
+  - Update golden files explicitly when output intentionally changes
 - Test file organization:
   - Place tests in `test/` directory at repository root
   - File naming: `test_xxx.ts` (e.g., `test_parser.ts`, `test_utils.ts`)
