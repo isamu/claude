@@ -50,6 +50,7 @@ Commit if changes were made.
 
 ### Rules
 
+- Branch name: `chore/yarn-update-YYYYMMDD` (e.g., `chore/yarn-update-20260209`) to keep names unique across runs
 - Create a single PR for all phases
 - Confirm CI passes after Phase 1 before proceeding to Phase 2
 - If Phase 2 breaks something, revert and keep only Phase 1 changes
