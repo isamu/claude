@@ -59,6 +59,8 @@ When asked to fix a bug or implement a new feature:
 
 ## Code Quality
 
+After completing a significant implementation, check for duplicate code with existing codebase and refactor to eliminate redundancy. Prioritize readability.
+
 After making code changes, always run:
 
 1. `yarn format` - Format code with Prettier
