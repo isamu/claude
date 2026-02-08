@@ -55,3 +55,4 @@ Commit if changes were made.
 - Confirm CI passes after Phase 1 before proceeding to Phase 2
 - If Phase 2 breaks something, revert and keep only Phase 1 changes
 - Always end with deduplication
+- Merge the PR once CI passes
