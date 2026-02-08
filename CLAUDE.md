@@ -48,7 +48,7 @@ When asked to fix a bug or implement a new feature:
 2. Once the scope is clear, create a GitHub issue summarizing the task
 3. Create a plan file under the repository's `plans/` directory (e.g., `plans/fix-xxx.md` or `plans/feat-xxx.md`)
 4. Implement based on the plan
-5. When creating the PR, include the user's original request in the PR description as a "User Prompt" section — clean up formatting but preserve the original wording without adding content
+5. When creating the PR, include the user's original request in the PR description as a "User Prompt" section — clean up formatting but preserve the original wording without adding content. If there are multiple requests, list each as a bullet point
 
 ## Debugging Approach
 
