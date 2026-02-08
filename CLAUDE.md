@@ -40,6 +40,16 @@ NEVER perform git commit, push, or other git operations without explicit user pe
 - If you think something additional should be added, ASK first
 - Do not over-elaborate PR comments, commit messages, or documentation — keep them concise unless asked otherwise
 
+## Bug Fix / Feature Request Workflow
+
+When asked to fix a bug or implement a new feature:
+
+1. Discuss and clarify requirements with the user
+2. Once the scope is clear, create a GitHub issue summarizing the task
+3. Create a plan file under the repository's `plans/` directory (e.g., `plans/fix-xxx.md` or `plans/feat-xxx.md`)
+4. Implement based on the plan
+5. When creating the PR, include the user's original request in the PR description as a "User Prompt" section — clean up formatting but preserve the original wording without adding content
+
 ## Debugging Approach
 
 - When a test or command fails, diagnose the ROOT CAUSE before attempting fixes
