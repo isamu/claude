@@ -41,7 +41,7 @@ When asked to fix a bug or implement a new feature:
 2. MUST create a GitHub issue summarizing the task once scope is clear
 3. MUST create a plan file under the repository's `plans/` directory (e.g., `plans/fix-xxx.md` or `plans/feat-xxx.md`)
 4. MUST implement based on the plan
-5. MUST include the user's original request in the PR description as a "User Prompt" section — clean up formatting but NEVER add content beyond the original wording. If there are multiple requests, list each as a bullet point
+5. MUST include the user's original request in the PR description as a "User Prompt" section — when the request spans multiple conversation turns, consolidate the user's messages into a coherent summary that preserves all of the user's intent without omitting details. Clean up formatting but NEVER add content beyond what the user said. If there are multiple distinct requests, list each as a bullet point
 
 ## Debugging Approach
 
