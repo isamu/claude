@@ -1,126 +1,115 @@
 # Global Claude Code Settings
 
+> Keywords: **MUST** / **NEVER** = mandatory. **SHOULD** = recommended unless there is a clear reason not to. **MAY** = optional.
+
 ## Package Manager
 
-Use **yarn** instead of npm.
-
-- `yarn` for installing dependencies
-- `yarn add <package>` for adding packages
-- `yarn remove <package>` for removing packages
-- Do NOT use npm commands
-- When adding packages, use `yarn add` instead of manually editing package.json
-- This ensures the latest version is installed automatically
+- MUST use **yarn** (`yarn`, `yarn add`, `yarn remove`)
+- NEVER use npm commands
+- MUST use `yarn add` instead of manually editing package.json
 
 ## Git Operations
 
-NEVER perform git commit, push, or other git operations without explicit user permission.
-
-- **ALWAYS check current branch** before making changes with `git branch` or `git status`
-  - If the branch is different from expected, ask the user which branch to use
-  - User may be working on multiple branches in parallel
-- **Create a feature branch** before starting implementation work
-  - Commit after each meaningful change (e.g., schema done → commit, utility functions done → commit)
-  - This makes PRs easier to review and enables incremental progress tracking
-- Always ask before running: `git commit`, `git push`, `git merge`, `git rebase`, etc.
-- Read-only operations like `git status`, `git diff`, `git log` are OK
-- NEVER use `git add .` or `git add <directory>` - always add files individually
-- There may be work-in-progress files that should not be committed
-- NEVER delete untracked files - they may be temporary work files or intentionally kept outside version control
-- Commit message prefixes: `feat:`, `fix:`, `refactor:`, `docs:`, `chore:`
-- NEVER push directly to main. Always create a feature branch and open a PR
-- When asked to 'create a PR' or 'PR、マージ', this means CREATE a pull request, not merge it
-- Always confirm the correct default/target branch before creating PRs
-- When merging PRs, use merge commit (`--merge`). Do NOT use squash merge
+- NEVER perform git commit, push, or other git operations without explicit user permission
+- MUST **check current branch** with `git branch` or `git status` before making changes
+  - If the branch is different from expected, MUST ask the user which branch to use
+- MUST **create a feature branch** before starting implementation work
+- MUST ask before running: `git commit`, `git push`, `git merge`, `git rebase`, etc.
+- NEVER use `git add .` or `git add <directory>` — MUST add files individually
+- NEVER delete untracked files
+- NEVER push directly to main — MUST create a feature branch and open a PR
+- MUST use merge commit (`--merge`) when merging PRs — NEVER use squash merge
 - NEVER use `git rebase`
 - NEVER use `git push --force`
+- MUST use commit message prefixes: `feat:`, `fix:`, `refactor:`, `docs:`, `chore:`
+- When asked to 'create a PR' or 'PR、マージ', this MUST be interpreted as CREATE a pull request, not merge it
+- MUST confirm the correct default/target branch before creating PRs
+- Read-only operations (`git status`, `git diff`, `git log`) MAY be run freely
+- SHOULD commit after each meaningful change (e.g., schema done → commit, utility functions done → commit)
 
 ## Change Scope Rules
 
-- Only make changes that were explicitly requested. Do NOT autonomously add features, tools, packages, or content
-- If you think something additional should be added, ASK first
-- Do not over-elaborate PR comments, commit messages, or documentation — keep them concise unless asked otherwise
+- MUST only make changes that were explicitly requested — NEVER autonomously add features, tools, packages, or content
+- MUST ask first if something additional seems needed
+- MUST keep PR comments, commit messages, and documentation concise unless asked otherwise
 
 ## Bug Fix / Feature Request Workflow
 
 When asked to fix a bug or implement a new feature:
 
-1. Discuss and clarify requirements with the user
-2. Once the scope is clear, create a GitHub issue summarizing the task
-3. Create a plan file under the repository's `plans/` directory (e.g., `plans/fix-xxx.md` or `plans/feat-xxx.md`)
-4. Implement based on the plan
-5. When creating the PR, include the user's original request in the PR description as a "User Prompt" section — clean up formatting but preserve the original wording without adding content. If there are multiple requests, list each as a bullet point
+1. MUST discuss and clarify requirements with the user
+2. MUST create a GitHub issue summarizing the task once scope is clear
+3. MUST create a plan file under the repository's `plans/` directory (e.g., `plans/fix-xxx.md` or `plans/feat-xxx.md`)
+4. MUST implement based on the plan
+5. MUST include the user's original request in the PR description as a "User Prompt" section — clean up formatting but NEVER add content beyond the original wording. If there are multiple requests, list each as a bullet point
 
 ## Debugging Approach
 
-- When a test or command fails, diagnose the ROOT CAUSE before attempting fixes
-- Do NOT try quick-fix approaches (hardcoding values, JSON workarounds) — properly investigate the issue first
-- Check git history/diffs when investigating regressions
-- When user reports a failing command, understand what they're asking before jumping to debug
+- MUST diagnose the ROOT CAUSE before attempting fixes
+- NEVER try quick-fix approaches (hardcoding values, JSON workarounds)
+- MUST check git history/diffs when investigating regressions
+- MUST understand what the user is asking before jumping to debug
 
 ## Code Quality
 
-After completing a significant implementation, check for duplicate code with existing codebase and refactor to eliminate redundancy. Prioritize readability.
-
-After making code changes, always run:
-
-1. `yarn format` - Format code with Prettier
-2. `yarn lint` - Check for linting errors
-3. `yarn build` - Verify build succeeds
+- MUST check for duplicate code with existing codebase after completing a significant implementation, and refactor to eliminate redundancy. Prioritize readability.
+- MUST run after making code changes:
+  1. `yarn format` - Format code with Prettier
+  2. `yarn lint` - Check for linting errors
+  3. `yarn build` - Verify build succeeds
 
 ## Documentation Maintenance
 
-When implementing or modifying CLI commands or other user-facing features:
-
-- **Always check README.md** after changes and update it to reflect the correct specification
-- Ensure command examples, options, and usage instructions are accurate
-- Update CLAUDE.md/AGENTS.md if they contain relevant CLI documentation
-- When specs are added or changed, always check the repository's README.md and docs/ for affected documentation, update them accordingly, and include the updates in the same commit
-- When creating web documentation, generate proper web components (Vue/Astro) NOT plain markdown files, unless explicitly asked for markdown
-- When documenting APIs or tools, VERIFY the actual implementation before writing — do not guess API names or parameters
+- MUST check README.md after changes and update it to reflect the correct specification
+- MUST ensure command examples, options, and usage instructions are accurate
+- MUST update CLAUDE.md/AGENTS.md if they contain relevant CLI documentation
+- MUST check the repository's README.md and docs/ when specs are added or changed, update them accordingly, and include the updates in the same commit
+- MUST generate proper web components (Vue/Astro) for web documentation — NEVER plain markdown files, unless explicitly asked for markdown
+- MUST VERIFY the actual implementation before writing API/tool documentation — NEVER guess API names or parameters
 
 ## New Project Setup
 
-When creating a new project, use `/init-project`.
+When creating a new project, MUST use `/init-project`.
 
 ## Coding Style
 
 ### Philosophy: Code for Human Comprehension
 
-Human context and memory are limited. Always write code with this in mind:
+Human context and memory are limited. MUST write code with this in mind:
 
 - **Compact functions**: Split into small, focused functions that humans can fully comprehend at a glance
-- **Clear naming**: Function and variable names should tell a story; a beginner should understand the flow
+- **Clear naming**: Function and variable names MUST tell a story; a beginner should understand the flow
 - **Minimal scope**: Keep variable scope as small as possible to reduce cognitive load
-- **Readable flow**: Code should read like a narrative - the sequence of function calls and variable assignments should make the intent obvious
+- **Readable flow**: Code MUST read like a narrative
 
 ### Rules
 
-- Keep functions under 20 lines; split into smaller functions if needed
-- Prefer `const` over `let`; never use `var`
-- Prefer functional approaches (`forEach`, `map`, `filter`, `reduce`) over `for` loops
-- Prefer `async/await` over `.then()` chains
-- Use explicit type definitions; avoid `any`
-- No magic numbers; use named constants
-- Include units in variable names when applicable (e.g., `timeout_ms`, `distance_km`)
-- Follow DRY principle (Don't Repeat Yourself)
-- **Error handling**: Always add try/catch for operations that can fail
-  - Network requests (fetch, API calls) must include timeout handling with AbortController
-  - Provide meaningful error messages with context (URL, file path, etc.)
+- MUST keep functions under 20 lines; split into smaller functions if needed
+- MUST prefer `const` over `let`; NEVER use `var`
+- MUST prefer functional approaches (`forEach`, `map`, `filter`, `reduce`) over `for` loops
+- MUST prefer `async/await` over `.then()` chains
+- MUST use explicit type definitions; NEVER use `any`
+- NEVER use magic numbers; MUST use named constants
+- SHOULD include units in variable names when applicable (e.g., `timeout_ms`, `distance_km`)
+- MUST follow DRY principle (Don't Repeat Yourself)
+- MUST add try/catch for operations that can fail
+  - Network requests (fetch, API calls) MUST include timeout handling with AbortController
+  - MUST provide meaningful error messages with context (URL, file path, etc.)
 
 ## Vue.js
 
-- Use Composition API (not Options API)
-- Always use relative paths for imports (not alias paths like `@/`)
-- Use `emit` instead of passing functions as props
-- Prefer `ref` over `reactive`
-- Never use `v-html` (security risk)
-- Use vue-i18n for text; never hardcode strings in templates (use `$t()`)
+- MUST use Composition API (NEVER Options API)
+- MUST use relative paths for imports (NEVER alias paths like `@/`)
+- MUST use `emit` instead of passing functions as props
+- SHOULD prefer `ref` over `reactive`
+- NEVER use `v-html` (security risk)
+- MUST use vue-i18n for text; NEVER hardcode strings in templates (use `$t()`)
 
 ## Testing
 
-- Use Node.js native `node:test` and `node:assert` for testing
-- Mock external APIs (tests should run without API keys)
-- For unit tests, cover the following patterns:
+- MUST use Node.js native `node:test` and `node:assert` for testing
+- MUST mock external APIs (tests MUST run without API keys)
+- For unit tests, MUST cover the following patterns:
   - Happy path (expected normal inputs)
   - Edge cases (unusual but valid inputs)
   - Corner cases (multiple edge conditions combined)
@@ -131,29 +120,29 @@ Human context and memory are limited. Always write code with this in mind:
   - Error cases (expected failures, thrown exceptions)
   - Negative cases (what should NOT happen)
   - Regression tests (previously found bugs)
-- For CI integration tests (CLI execution, program output), use **golden tests**:
+- For CI integration tests (CLI execution, program output), MUST use **golden tests**:
   - Store the expected correct output (text, files) in git as golden files
   - Compare actual output against golden files in CI
   - Update golden files explicitly when output intentionally changes
 - Test file organization:
-  - Place tests in `test/` directory at repository root
+  - MUST place tests in `test/` directory at repository root
   - File naming: `test_xxx.ts` (e.g., `test_parser.ts`, `test_utils.ts`)
-  - For large repositories, split into subdirectories (e.g., `test/api/`, `test/utils/`)
-- Add `test` script to package.json and run tests in CI
+  - For large repositories, SHOULD split into subdirectories (e.g., `test/api/`, `test/utils/`)
+- MUST add `test` script to package.json and run tests in CI
 
 ### CI / Cross-Platform Compatibility
 
-CI should work on **Linux, Windows, and macOS** whenever possible.
+CI MUST work on **Linux, Windows, and macOS** whenever possible.
 
-- Use `node:path` with `path.join()` / `path.resolve()` instead of hardcoded `/` or `\\` separators
-- Use `node:url` (`fileURLToPath`, `pathToFileURL`) for file URL conversions
-- Avoid shell-specific syntax in npm scripts (no `rm -rf`, `cp`, `&&` chaining that differs across shells); use cross-platform alternatives:
+- MUST use `node:path` with `path.join()` / `path.resolve()` instead of hardcoded `/` or `\\` separators
+- MUST use `node:url` (`fileURLToPath`, `pathToFileURL`) for file URL conversions
+- NEVER use shell-specific syntax in npm scripts; use cross-platform alternatives:
   - `rimraf` instead of `rm -rf`
   - `shx` or `cpy-cli` instead of `cp` / `mv`
   - Or use Node.js scripts for complex build steps
-- Do not rely on case-sensitive file systems (macOS/Windows are case-insensitive by default)
-- Use `node:os` for platform-specific logic when unavoidable
-- In GitHub Actions, include all three runners in the matrix:
+- NEVER rely on case-sensitive file systems (macOS/Windows are case-insensitive by default)
+- SHOULD use `node:os` for platform-specific logic when unavoidable
+- MUST include all three runners in GitHub Actions matrix:
   ```yaml
   strategy:
     matrix:
@@ -162,17 +151,17 @@ CI should work on **Linux, Windows, and macOS** whenever possible.
 
 ## npm Package Release
 
-When releasing an npm package, use `/publish`.
+When releasing an npm package, MUST use `/publish`.
 
 ## Web Design with Playwright
 
 When modifying web design (CSS, HTML, layouts):
 
-1. Use `browser_navigate` to open the page
-2. Use `browser_snapshot` to get DOM structure (preferred for understanding layout)
-3. Use `browser_take_screenshot` to capture visual state
+1. MUST use `browser_navigate` to open the page
+2. MUST use `browser_snapshot` to get DOM structure (preferred for understanding layout)
+3. MUST use `browser_take_screenshot` to capture visual state
 4. Make code changes
-5. Refresh and verify with screenshot
+5. MUST refresh and verify with screenshot
 
 Useful tools:
 - `browser_resize` - Test responsive design at different breakpoints
@@ -180,28 +169,32 @@ Useful tools:
 
 ## TypeScript Best Practices
 
-- Avoid `as` type casts; use type guards instead (e.g., `const isXxx = (x: unknown): x is Type => { ... }`)
-- Use existing utility functions from libraries (e.g., `isObject` from graphai) instead of writing your own
-- Use `z.infer<typeof schema>` to derive types from Zod schemas; don't define duplicate local types
-- When building strings with `const`, use array + `push()` + `join()` pattern instead of `let` + `+=`
-- Separate pure data transformation functions into their own files for reusability and testability
-- Use descriptive format names (e.g., "object format" vs "text format") instead of "new/legacy"
-- When migrating or upgrading packages, verify the correct API signatures for the TARGET version — do not assume old APIs still work
+- NEVER use `as` type casts; MUST use type guards instead (e.g., `const isXxx = (x: unknown): x is Type => { ... }`)
+- MUST use existing utility functions from libraries (e.g., `isObject` from graphai) instead of writing your own
+- MUST use `z.infer<typeof schema>` to derive types from Zod schemas; NEVER define duplicate local types
+- MUST use array + `push()` + `join()` pattern for building strings with `const` instead of `let` + `+=`
+- SHOULD separate pure data transformation functions into their own files for reusability and testability
+- MUST use descriptive format names (e.g., "object format" vs "text format") instead of "new/legacy"
+- MUST verify the correct API signatures for the TARGET version when migrating or upgrading packages — NEVER assume old APIs still work
 
 ## Continuous Learning
 
 When learning something new during a session that should be remembered:
-1. Confirm with the user before adding to this file
-2. Add the learning to the appropriate section (or create a new section if needed)
-3. Keep entries concise and actionable
+1. MUST confirm with the user before adding to this file
+2. MUST add the learning to the appropriate section (or create a new section if needed)
+3. MUST keep entries concise and actionable
+
+After completing a task (PR merge, command completion, etc.), MUST review the session:
+- If the user gave corrections, redirections, or repeated instructions during the session, MUST evaluate whether they indicate a missing rule in CLAUDE.md or a skill
+- If so, MUST propose adding it to the appropriate location
 
 ## Automation Proposals
 
 When the same instruction or pattern is given 2+ times in a session:
-1. Recognize the repetition and propose automation
-2. Choose the most appropriate method:
+1. MUST recognize the repetition and propose automation
+2. MUST choose the most appropriate method:
    - **CLAUDE.md**: For rules, guidelines, or workflows (e.g., release process, coding standards)
    - **Skill/Command**: For executable actions that can be parameterized (e.g., `/release`, `/deploy`)
    - **Script**: For complex multi-step operations that benefit from scripting
-3. Explain the trade-offs and let the user decide
-4. After implementation, confirm it works as expected
+3. MUST explain the trade-offs and let the user decide
+4. MUST confirm it works as expected after implementation
