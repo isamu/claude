@@ -8,6 +8,10 @@
 - NEVER use npm commands
 - MUST use `yarn add` instead of manually editing package.json
 
+## General
+
+- When today's date is needed, MUST run the `date` command to get it — NEVER rely on model's internal knowledge
+
 ## Git Operations
 
 - NEVER perform git commit, push, or other git operations without explicit user permission
