@@ -38,7 +38,8 @@ description: Update yarn dependencies with safe, staged upgrade strategy and aud
    - Delete ONLY the affected package's entry (and its root dependency entry) from `yarn.lock` — do NOT delete the entire file
    - Run `yarn install` to re-resolve only those packages
    - Run `yarn audit` again to verify the fix persists
-3. Commit fixes to the same PR
+   - Run `yarn lint`, `yarn build`, `yarn test` — if any fail, revert the yarn.lock change and report the vulnerability without fixing it
+3. Commit fixes to the same PR. If a vulnerability cannot be fixed without breaking the build, report it to the user instead
 
 ### Phase 4: Deduplicate
 
