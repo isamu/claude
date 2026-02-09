@@ -34,8 +34,9 @@ description: Update yarn dependencies with safe, staged upgrade strategy and aud
    yarn audit
    ```
 2. For vulnerabilities, `yarn audit fix` usually does not work — instead:
-   - Delete the affected entry from `yarn.lock`
-   - Run `yarn install` to re-resolve
+   - Identify the vulnerable package and its root dependency from the audit output
+   - Delete ONLY the affected package's entry (and its root dependency entry) from `yarn.lock` — do NOT delete the entire file
+   - Run `yarn install` to re-resolve only those packages
    - Run `yarn audit` again to verify the fix persists
 3. Commit fixes to the same PR
 
