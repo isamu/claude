@@ -59,6 +59,8 @@ Before running `npm publish`, verify:
 
      **Sample**: [Example Link](https://github.com/org/repo/blob/main/path/to/sample.json)
 
+     📦 **npm**: [`package-name@1.0.0`](https://www.npmjs.com/package/package-name/v/1.0.0)
+
      ---
 
      EOF
@@ -67,6 +69,8 @@ Before running `npm publish`, verify:
    - The `--notes` content is prepended to `--generate-notes` output
    - Include links to docs/samples when available
    - For code examples, use fenced code blocks in the notes
+   - MUST include the npm package link using the format: `📦 **npm**: [\`package-name@version\`](https://www.npmjs.com/package/package-name/v/version)`
+   - Read the package name from package.json `name` field (handle scoped packages like `@scope/name` — the npm URL for scoped packages is `https://www.npmjs.com/package/@scope/name/v/version`)
 
 ### Important Rules
 

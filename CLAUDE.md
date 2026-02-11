@@ -31,6 +31,19 @@
 - Read-only operations (`git status`, `git diff`, `git log`) MAY be run freely
 - SHOULD commit after each meaningful change (e.g., schema done → commit, utility functions done → commit)
 
+## PR Bot Review Handling
+
+After pushing to a PR, MUST check for bot review comments (e.g., CodeRabbit) using `gh pr view` and address them:
+
+1. MUST read all bot comments and review feedback using `gh pr view <number> --json comments,reviews`
+2. MUST triage each comment:
+   - **Actionable bug/fix**: Apply the fix, add tests if applicable
+   - **Valid nitpick**: Fix if low-effort; otherwise note as intentional
+   - **False positive / outdated info**: Verify (e.g., check actual library version) and skip with explanation
+3. MUST NOT blindly apply all suggestions — verify each against the actual codebase state
+4. MUST commit fixes with `fix: address <bot-name> review comments` and push
+5. SHOULD batch all fixes into a single commit when possible
+
 ## Change Scope Rules
 
 - MUST only make changes that were explicitly requested — NEVER autonomously add features, tools, packages, or content
