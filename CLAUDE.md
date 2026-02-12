@@ -88,6 +88,13 @@ When asked to fix a bug or implement a new feature:
 
 When creating a new project, MUST use `/init-project`.
 
+## Import Style
+
+- MUST use top-level `import` for npm packages — NEVER use `await import()` for packages that are always needed
+- Dynamic `import()` MAY only be used for conditional/optional dependencies that are not always loaded
+
+- NEVER re-export modules unless there is a specific, justified reason
+
 ## Coding Style
 
 ### Philosophy: Code for Human Comprehension
