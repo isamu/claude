@@ -11,6 +11,8 @@ CLAUDE.md と skill をメンテナンスして、AI がルールの中でのび
 ### 共通（全プロジェクト必須）
 
 - lint / unit test / formatter は必須
+- unit test を追加するコストは AI により 0 になった。以下を網羅的にテストを書く
+  - happy path / edge case / corner case / boundary case / empty case / null case / invalid input / error case / negative case / regression test
 - CI でもしっかりテストを回す
 
 ### プロダクションコード（きちんと管理するソフトウェア）
