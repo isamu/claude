@@ -60,6 +60,7 @@ When asked to fix a bug or implement a new feature:
 4. MUST implement based on the plan
 5. MUST include the user's original request in the PR description as a "User Prompt" section — when the request spans multiple conversation turns, consolidate the user's messages into a coherent summary that preserves all of the user's intent without omitting details. Clean up formatting but NEVER add content beyond what the user said. If there are multiple distinct requests, list each as a bullet point
 6. MUST include detailed implementation approach, proposed steps, and key decisions in the PR description — important information discussed in chat MUST be persisted as files or PR comments, NEVER only in chat
+7. For AI-generated code PRs, MUST put a **Summary** section and an **Items to Confirm / Review** section at the **very top** of the PR description (before User Prompt, implementation details, etc.). The reviewer should see the summary and explicit review-focus points first, so they know what changed and what the author specifically wants a human to check (e.g., risky decisions, assumptions, unverified behaviors).
 
 ## Debugging Approach
 
