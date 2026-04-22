@@ -74,7 +74,9 @@ Before running `npm publish`, verify:
 
 ### Important Rules
 
-- Tag format: `1.0.0` (NOT `v1.0.0`)
+- Tag format: `@scope/name@1.0.0` (NOT `v1.0.0` — that's for app releases)
 - Commit message format: `@package-name@version` (e.g., `@gui-chat-plugin/todo@0.1.1`)
 - Use `git pull origin main` for syncing (NEVER `git rebase`)
 - Add files individually (NEVER `git add -A` or `git add .`)
+- **MUST use `--latest=false`** when creating the GitHub release — package releases must NOT replace the latest app release (e.g., `v0.2.0`). Only `/release-app` creates latest releases.
+- NEVER push directly to main — always create a PR

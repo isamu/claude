@@ -33,16 +33,21 @@
 
 ## PR Bot Review Handling
 
-After pushing to a PR, MUST check for bot review comments (e.g., CodeRabbit) using `gh pr view` and address them:
+After pushing to a PR, MUST check **every** bot reviewer that has commented — not just the first one. Common bots to look for: **CodeRabbit (`coderabbitai[bot]`)** and **Sourcery (`sourcery-ai[bot]`)**, plus any project-specific reviewers (Socket Security, GitHub Actions checks). Each bot has its own comment style and may catch issues the others miss, so all of them MUST be triaged.
 
-1. MUST read all bot comments and review feedback using `gh pr view <number> --json comments,reviews`
+1. MUST read **all** bot comments and review feedback. The recommended commands:
+   - `gh pr view <number> --json comments,reviews` — top-level comments + review summaries
+   - `gh api repos/<owner>/<repo>/pulls/<number>/comments` — inline review threads (the `gh pr view` JSON omits these)
+   - Filter by author: `coderabbitai`, `sourcery-ai`, etc. — checking only one bot is a common oversight
 2. MUST triage each comment:
    - **Actionable bug/fix**: Apply the fix, add tests if applicable
    - **Valid nitpick**: Fix if low-effort; otherwise note as intentional
    - **False positive / outdated info**: Verify (e.g., check actual library version) and skip with explanation
-3. MUST NOT blindly apply all suggestions — verify each against the actual codebase state
-4. MUST commit fixes with `fix: address <bot-name> review comments` and push
+   - **Rate-limited / "try again later"**: Note it; the bot didn't actually review. Re-check later.
+3. MUST NOT blindly apply all suggestions — verify each against the actual codebase state. Bots disagree sometimes; pick the right answer rather than satisfying both mechanically.
+4. MUST commit fixes with `fix: address <bot-name> review comments` and push (use the specific bot name so the history shows which reviewer prompted the fix)
 5. SHOULD batch all fixes into a single commit when possible
+6. MUST post a follow-up comment on the PR summarizing what was addressed vs. deliberately skipped, so the human reviewer doesn't have to re-walk the bot threads
 
 ## Change Scope Rules
 
