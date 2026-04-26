@@ -23,6 +23,39 @@ Skip when:
 PR URL or number. If only `<N>`, infer owner/repo from
 `gh repo view --json nameWithOwner`.
 
+### Default: no argument → infer from current directory
+
+If invoked with no PR number / URL, derive the PR from the
+current git context. Common case: the user just ran
+`gh pr merge` and stayed in the working tree of the merged
+branch — the skill should auto-target that PR.
+
+```bash
+OWNER_REPO=$(gh repo view --json nameWithOwner --jq .nameWithOwner)
+BRANCH=$(git rev-parse --abbrev-ref HEAD)
+
+# A merged PR's branch is usually deleted, so check the merge
+# commit on the current branch first (works when the user is
+# back on `main` after a `--delete-branch` merge).
+LAST_MERGE_PR=$(git log -1 --merges --pretty=%s | grep -oE '#[0-9]+' | head -1 | tr -d '#')
+
+# Then fall back to "the PR whose head is this branch".
+HEAD_PR=$(gh pr list --repo "$OWNER_REPO" --head "$BRANCH" --state all \
+          --limit 1 --json number --jq '.[0].number')
+
+PR_N="${LAST_MERGE_PR:-$HEAD_PR}"
+
+if [ -z "$PR_N" ]; then
+  echo "No PR found for branch '$BRANCH' in $OWNER_REPO." >&2
+  echo "Run with an explicit PR number, e.g. /pr-merge-tidy 805" >&2
+  exit 1
+fi
+```
+
+Surface the inferred PR number to the user before proceeding so
+they can abort if the inference picked the wrong PR (e.g. the
+last merge on this branch was a stale merge from days ago).
+
 ## Steps
 
 ### 1. Confirm MERGED

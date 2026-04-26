@@ -8,13 +8,50 @@ Audit pull requests updated within a recent time window, triage CodeRabbit findi
 
 ### Invocation
 
-The user may pass a window:
+The user may pass either a **time window** (sweep mode) or a
+**PR number** (single-PR mode). When neither is provided, the
+skill defaults to single-PR mode targeted at the PR for the
+current branch — see "Default: no argument" below.
 
-- `/pr-quality-sweep` → default 24 hours
-- `/pr-quality-sweep 3d` / `3 days` / `72h` → 72 hours
-- `/pr-quality-sweep 12h` → 12 hours
+- `/pr-quality-sweep` → **single-PR** mode for the PR matching the current branch (or the last merge on the current branch if the head-PR lookup misses)
+- `/pr-quality-sweep 805` / `https://github.com/<o>/<r>/pull/805` → single-PR mode for the explicit PR
+- `/pr-quality-sweep 3d` / `3 days` / `72h` → sweep mode, 72 hours
+- `/pr-quality-sweep 12h` → sweep mode, 12 hours
+- `/pr-quality-sweep 24h` → sweep mode, 24 hours (the old default — pass it explicitly when you want it)
 
-Parse the argument as `Nd` / `Nh` / "N days" / "N hours". If absent or unparseable, use 24 hours. Convert to an absolute ISO cutoff using `date -u -v-{N}H +%Y-%m-%dT%H:%M:%SZ` (macOS) or `date -u -d "{N} hours ago" +%Y-%m-%dT%H:%M:%SZ` (Linux).
+Argument parsing:
+
+- Pure integer or PR URL → single-PR mode (skip step 2's listing, jump straight to step 3 with `PR_NUMBERS=<N>`).
+- `Nd` / `Nh` / "N days" / "N hours" → sweep mode with that window. Convert to an absolute ISO cutoff using `date -u -v-{N}H +%Y-%m-%dT%H:%M:%SZ` (macOS) or `date -u -d "{N} hours ago" +%Y-%m-%dT%H:%M:%SZ` (Linux).
+- Empty → single-PR mode via the inference helper.
+
+### Default: no argument → infer PR from current directory
+
+```bash
+OWNER_REPO=$(gh repo view --json nameWithOwner --jq .nameWithOwner)
+BRANCH=$(git rev-parse --abbrev-ref HEAD)
+
+HEAD_PR=$(gh pr list --repo "$OWNER_REPO" --head "$BRANCH" --state open \
+          --limit 1 --json number --jq '.[0].number')
+if [ -z "$HEAD_PR" ]; then
+  HEAD_PR=$(gh pr list --repo "$OWNER_REPO" --head "$BRANCH" --state all \
+            --limit 1 --json number --jq '.[0].number')
+fi
+
+# When already on `main`, the head-PR lookup is empty; fall back
+# to the last merge commit on this branch.
+LAST_MERGE_PR=$(git log -1 --merges --pretty=%s | grep -oE '#[0-9]+' | head -1 | tr -d '#')
+
+PR_N="${HEAD_PR:-$LAST_MERGE_PR}"
+
+if [ -z "$PR_N" ]; then
+  echo "No PR found for branch '$BRANCH' in $OWNER_REPO." >&2
+  echo "Run with an explicit PR number (e.g. /pr-quality-sweep 805) or a time window (e.g. /pr-quality-sweep 24h)." >&2
+  exit 1
+fi
+```
+
+Surface the inferred PR number to the user before proceeding.
 
 ### Steps
 

@@ -26,6 +26,42 @@ PR URL (`https://github.com/<owner>/<repo>/pull/<N>`) or just `<N>`
 if the cwd is a clone. If only `<N>`, infer owner/repo from
 `gh repo view --json nameWithOwner`.
 
+### Default: no argument → infer from current directory
+
+If invoked with no PR number / URL, derive the PR from the
+current git context. Common case: the user just pushed a UI
+branch and is sitting in its working tree.
+
+```bash
+OWNER_REPO=$(gh repo view --json nameWithOwner --jq .nameWithOwner)
+BRANCH=$(git rev-parse --abbrev-ref HEAD)
+
+# Prefer an OPEN PR for the current branch (the active iteration);
+# only fall back to all-states if nothing's open.
+PR_N=$(gh pr list --repo "$OWNER_REPO" --head "$BRANCH" --state open \
+       --limit 1 --json number --jq '.[0].number')
+if [ -z "$PR_N" ]; then
+  PR_N=$(gh pr list --repo "$OWNER_REPO" --head "$BRANCH" --state all \
+         --limit 1 --json number --jq '.[0].number')
+fi
+
+if [ -z "$PR_N" ]; then
+  echo "No PR found for branch '$BRANCH' in $OWNER_REPO." >&2
+  echo "Run with an explicit PR number, e.g. /pr-ui-test 805" >&2
+  exit 1
+fi
+```
+
+Surface the inferred PR number to the user before checking out
+the worktree — the user can abort if it picked the wrong PR.
+
+If the inferred PR is **already on the current branch's tip**
+(no diff between `origin/$BRANCH` and the PR's head), you can
+shortcut step 2's worktree setup and run the dev server directly
+in the current working tree instead of cloning into
+`~/ss/llm/mulmoclaude-pr-<N>`. Confirm with the user before
+doing so — the worktree is safer when in doubt.
+
 ## Setup
 
 The user's primary clone is at `~/ss/llm/mulmoclaude` (or wherever
