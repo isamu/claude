@@ -127,6 +127,15 @@ Human context and memory are limited. MUST write code with this in mind:
   - Network requests (fetch, API calls) MUST include timeout handling with AbortController
   - MUST provide meaningful error messages with context (URL, file path, etc.)
 
+### Comments
+
+- **Default to writing no comments.** Lean on names, types, and argument structure to do the explaining. If a comment restates what the next line obviously does (e.g. `// Initialize counter` followed by `let counter = 0;`), delete it.
+- **NEVER explain WHAT the code does** — well-named functions, variables, and types already do that. If a comment is needed to understand WHAT, the better fix is to rename the identifier, tighten the type, or extract a smaller function.
+- **ONLY add a comment when the WHY is non-obvious**: a hidden constraint, a subtle invariant, a workaround for a specific bug, a browser / library quirk, behavior that would surprise a reader. A future maintainer should be able to look at the comment and judge "is this still the right call?" — which means the *reason* must be in the comment, not just the *rule*.
+- **NEVER reference the current task, fix, or callers** in comments (`// used by X`, `// added for the Y flow`, `// see issue #123`) — that context belongs in the PR description / commit message, and rots as the codebase evolves.
+- **Don't write multi-paragraph docstrings or multi-line comment blocks** unless absolutely required by an external contract (public-API JSDoc on a published package). One short line is the cap.
+- When refactoring, **delete WHAT comments aggressively** rather than keeping them around "just in case" — the source of truth is the code.
+
 ## Vue.js
 
 - MUST use Composition API (NEVER Options API)
