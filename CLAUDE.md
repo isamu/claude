@@ -24,7 +24,7 @@
 - NEVER push directly to main — MUST create a feature branch and open a PR
 - MUST use merge commit (`--merge`) when merging PRs — NEVER use squash merge
 - NEVER use `git rebase`
-- NEVER use `git push --force`
+- NEVER use `git push --force` (unconditional overwrite). `git push --force-with-lease` is permitted only on a feature branch you just pushed yourself, after `git commit --amend` or similar local rewrite — it aborts safely if anyone else pushed in the meantime. NEVER force-push (any variant) to `main` or shared branches.
 - MUST use commit message prefixes: `feat:`, `fix:`, `refactor:`, `docs:`, `chore:`
 - When asked to 'create a PR' or 'PR、マージ', this MUST be interpreted as CREATE a pull request, not merge it
 - MUST confirm the correct default/target branch before creating PRs
@@ -33,21 +33,13 @@
 
 ## PR Bot Review Handling
 
-After pushing to a PR, MUST check **every** bot reviewer that has commented — not just the first one. Common bots to look for: **CodeRabbit (`coderabbitai[bot]`)** and **Sourcery (`sourcery-ai[bot]`)**, plus any project-specific reviewers (Socket Security, GitHub Actions checks). Each bot has its own comment style and may catch issues the others miss, so all of them MUST be triaged.
+After pushing to a PR, MUST triage **every** bot reviewer — not just the first one (CodeRabbit `coderabbitai[bot]`, Sourcery `sourcery-ai[bot]`, Codex, plus project-specific reviewers like Socket Security). Use the `/gh-review-loop` skill: it reads what all the GitHub-side bots posted on the latest commit (including inline threads that `gh pr view` omits), applies real fixes, pushes, and waits for re-review until every bot signs off, CI is green, and the user confirms.
 
-1. MUST read **all** bot comments and review feedback. The recommended commands:
-   - `gh pr view <number> --json comments,reviews` — top-level comments + review summaries
-   - `gh api repos/<owner>/<repo>/pulls/<number>/comments` — inline review threads (the `gh pr view` JSON omits these)
-   - Filter by author: `coderabbitai`, `sourcery-ai`, etc. — checking only one bot is a common oversight
-2. MUST triage each comment:
-   - **Actionable bug/fix**: Apply the fix, add tests if applicable
-   - **Valid nitpick**: Fix if low-effort; otherwise note as intentional
-   - **False positive / outdated info**: Verify (e.g., check actual library version) and skip with explanation
-   - **Rate-limited / "try again later"**: Note it; the bot didn't actually review. Re-check later.
-3. MUST NOT blindly apply all suggestions — verify each against the actual codebase state. Bots disagree sometimes; pick the right answer rather than satisfying both mechanically.
-4. MUST commit fixes with `fix: address <bot-name> review comments` and push (use the specific bot name so the history shows which reviewer prompted the fix)
-5. SHOULD batch all fixes into a single commit when possible
-6. MUST post a follow-up comment on the PR summarizing what was addressed vs. deliberately skipped, so the human reviewer doesn't have to re-walk the bot threads
+Core principles it enforces — and which MUST hold even when triaging by hand:
+- MUST NOT blindly apply suggestions — verify each against the actual codebase; bots disagree, so pick the right answer rather than satisfying both mechanically.
+- Classify each comment: actionable fix (apply + add tests), valid nitpick (fix if cheap, else note as intentional), false positive / outdated (verify and skip with reason), rate-limited (note; re-check later).
+- MUST commit fixes as `fix: address <bot-name> review comments` (name the specific bot), batched into one commit when possible.
+- MUST post a follow-up PR comment summarizing what was addressed vs. deliberately skipped, so the human reviewer doesn't re-walk the bot threads.
 
 ## Change Scope Rules
 
@@ -77,10 +69,12 @@ When asked to fix a bug or implement a new feature:
 ## Code Quality
 
 - MUST check for duplicate code with existing codebase after completing a significant implementation, and refactor to eliminate redundancy. Prioritize readability.
+- SHOULD run `/code-review` after a significant implementation to catch bugs and cleanups (`--fix` to apply, `--comment` to post inline PR comments); use `/simplify` for quality-only refactors and `/security-review` when the change has a security surface
 - MUST run after making code changes:
   1. `yarn format` - Format code with Prettier
   2. `yarn lint` - Check for linting errors
   3. `yarn build` - Verify build succeeds
+  4. `yarn typecheck` - If the script is defined in package.json, MUST run it. Many repos split `yarn build` (compile-only, tsconfig.build.json, often excludes `test/`) from `yarn typecheck` (full project, tsconfig.json, includes tests). CI runs typecheck; `yarn build` can pass while typecheck fails when test files reference types you tightened. Skipping this step is the most common cause of "passed locally, failed in CI."
 
 ## Documentation Maintenance
 
@@ -147,7 +141,7 @@ Human context and memory are limited. MUST write code with this in mind:
 
 ## Testing
 
-- MUST use Node.js native `node:test` and `node:assert` for testing
+- SHOULD use Node.js native `node:test` and `node:assert` by default; if the project already uses another runner (e.g. vitest, as in Cloudflare Workers projects), MUST follow the existing one
 - MUST mock external APIs (tests MUST run without API keys)
 - For unit tests, MUST cover the following patterns:
   - Happy path (expected normal inputs)
@@ -193,9 +187,18 @@ CI MUST work on **Linux, Windows, and macOS** whenever possible.
 
 When releasing an npm package, MUST use `/publish`.
 
-## Web Design with Playwright
+## Web Design & Debugging
 
-When modifying web design (CSS, HTML, layouts):
+MUST prefer the dedicated skills over driving a browser by hand:
+
+- `/verify` — exercise a change end-to-end and observe real behavior (run before committing nontrivial UI changes)
+- `run` — launch and drive the project's app to see a change working / take a screenshot
+- `/pr-ui-test` — UI regression check for a PR
+- `/web-perf` — web performance investigation
+
+Fall back to the Playwright MCP directly only when those skills don't fit or its `browser_*` tools aren't loaded in the session.
+
+When working the browser by hand for **web design** (CSS, HTML, layouts):
 
 1. MUST use `browser_navigate` to open the page
 2. MUST use `browser_snapshot` to get DOM structure (preferred for understanding layout)
@@ -203,9 +206,18 @@ When modifying web design (CSS, HTML, layouts):
 4. Make code changes
 5. MUST refresh and verify with screenshot
 
-Useful tools:
+When **debugging web behaviour** (UI bugs, runtime errors, failing flows):
+
+- MUST drive the page while debugging — actually run the broken flow, don't speculate from the source. Click / type / submit through the steps the user described, observe the live result, then iterate on the fix.
+- MUST check `browser_console_messages` for runtime errors / warnings before assuming the UI is "fine"
+- MUST use `browser_network_requests` to inspect API calls / responses when the bug involves data flow
+- After a fix, MUST re-drive the same flow end-to-end to confirm the regression is gone — never just "looks right in snapshot"
+
+Useful Playwright MCP tools:
 - `browser_resize` - Test responsive design at different breakpoints
-- `browser_evaluate` - Inspect computed styles via JavaScript
+- `browser_evaluate` - Inspect computed styles / state via JavaScript
+- `browser_console_messages` - Read runtime console output
+- `browser_network_requests` - Inspect HTTP traffic
 
 ## TypeScript Best Practices
 
@@ -217,16 +229,28 @@ Useful tools:
 - MUST use descriptive format names (e.g., "object format" vs "text format") instead of "new/legacy"
 - MUST verify the correct API signatures for the TARGET version when migrating or upgrading packages — NEVER assume old APIs still work
 
+## Sharing Knowledge as Tech-Blog Articles
+
+During development, when a generally-shareable insight emerges — a tool we picked, a workaround we discovered, a non-obvious gotcha — propose turning it into a short tech-blog article.
+
+- Trigger: insights with **value beyond the current repository** (e.g. CI tooling choices, language / framework gotchas, security setups, integration patterns). Skip repo-specific bug fixes, refactors, or anything that only makes sense with full project context.
+- When you have the merged PR for the change, MUST use the `/pr-to-tech-blog` skill — it knows the destination directory, frontmatter shape, and house style.
+- ALWAYS confirm with the user before drafting, and pick a title together if it isn't obvious.
+
 ## Continuous Learning
 
-When learning something new during a session that should be remembered:
-1. MUST confirm with the user before adding to this file
+When learning something worth remembering, MUST first choose the right destination:
+- **Rules / workflows / coding standards** (apply to all future work) → this file (CLAUDE.md)
+- **Facts about the user, feedback/corrections, or project context** (not derivable from code or git history) → file-based memory (`~/.claude/.../memory/`, with a one-line pointer added to `MEMORY.md`)
+
+When adding to this file:
+1. MUST confirm with the user before adding
 2. MUST add the learning to the appropriate section (or create a new section if needed)
 3. MUST keep entries concise and actionable
 
 After completing a task (PR merge, command completion, etc.), MUST review the session:
-- If the user gave corrections, redirections, or repeated instructions during the session, MUST evaluate whether they indicate a missing rule in CLAUDE.md or a skill
-- If so, MUST propose adding it to the appropriate location
+- If the user gave corrections, redirections, or repeated instructions during the session, MUST evaluate whether they indicate a missing rule (→ CLAUDE.md), a fact/preference worth persisting (→ memory), or a candidate for a new skill
+- If so, MUST propose saving it to the appropriate location
 
 ## Automation Proposals
 
