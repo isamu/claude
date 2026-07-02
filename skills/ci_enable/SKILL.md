@@ -1,5 +1,5 @@
 ---
-description: Enable CI for a repository - add GitHub Actions workflow, .gitattributes, Dependabot, create PR, and fix until CI passes
+description: Enable CI for a repository - add GitHub Actions workflow, .gitattributes, security alerts (optionally Dependabot updates), create PR, and fix until CI passes. Use when asked to set up CI/GitHub Actions for a repository (CI入れて, ciでできるものは全部, GitHub Actions設定して).
 ---
 
 ## CI Enable
@@ -21,6 +21,8 @@ Download these two files:
   - Save to `.github/workflows/pull_request.yml`
 - **Gitattributes**: `https://raw.githubusercontent.com/isamu/graphai_agent_template/refs/heads/main/.gitattributes`
   - Save to `.gitattributes`
+
+If the template URLs are unreachable, generate an equivalent workflow inline (checkout, setup-node, `yarn install --frozen-lockfile`, then the lint/build/test/format steps from step 3).
 
 #### 3. Adjust workflow steps based on package.json
 
@@ -47,6 +49,8 @@ Only keep steps that have a real corresponding script.
 - Ensure glob patterns use forward slashes
 
 #### 6. Create branch and PR
+
+Check for a branch-name collision first: if `git rev-parse --verify ci` succeeds, use `ci-2`, `ci-3`, ... instead.
 
 ```bash
 git checkout -b ci main
@@ -93,9 +97,9 @@ After CI passes, confirm with the user, then merge with merge commit:
 gh pr merge <PR_NUMBER> --merge
 ```
 
-#### 9. Enable Dependabot
+#### 9. Enable security alerts
 
-Enable Dependabot security alerts and updates:
+Enable vulnerability (security) alerts:
 
 ```bash
 gh api -X PUT repos/{owner}/{repo}/vulnerability-alerts
@@ -105,6 +109,24 @@ Check current status:
 ```bash
 gh api repos/{owner}/{repo}/vulnerability-alerts
 ```
+
+#### 10. (Optional) Enable Dependabot
+
+Ask the user first. If they want Dependabot:
+
+- Enable automated security fixes:
+  ```bash
+  gh api -X PUT repos/{owner}/{repo}/automated-security-fixes
+  ```
+- Create `.github/dependabot.yml` (commit via the same PR flow as above):
+  ```yaml
+  version: 2
+  updates:
+    - package-ecosystem: "npm"
+      directory: "/"
+      schedule:
+        interval: "weekly"
+  ```
 
 ### Important Rules
 

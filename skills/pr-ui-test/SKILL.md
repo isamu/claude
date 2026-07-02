@@ -66,6 +66,8 @@ doing so — the worktree is safer when in doubt.
 
 The user's primary clone is at `~/ss/llm/mulmoclaude` (or wherever
 their working tree is — confirm with `git rev-parse --show-toplevel`).
+This is the canonical clone for UI testing; `mulmoclaude-blog`
+intentionally uses the separate `~/ss/llm/mulmoclaude3` clone.
 Don't touch their main checkout — switching branches under them
 clobbers in-progress work. Use a git worktree.
 
@@ -111,13 +113,14 @@ clobbers in-progress work. Use a git worktree.
    fi
    ```
    If conflict, ask the user: "既存の dev server を止めますか?" — on
-   yes, `pkill -f "npm run dev|tsx server/index.ts|vite"` (be
-   explicit; don't kill arbitrary node processes).
+   yes, `pkill -f "yarn dev|tsx server/index.ts|vite"` (matches the
+   `yarn dev` wrapper AND the underlying tsx/vite processes it
+   spawns; be explicit, don't kill arbitrary node processes).
 
 5. **Start the dev server in the background.**
    ```bash
    cd ~/ss/llm/mulmoclaude-pr-<N>
-   nohup npm run dev > /tmp/mulmoclaude-pr-<N>.log 2>&1 &
+   nohup yarn dev > /tmp/mulmoclaude-pr-<N>.log 2>&1 &
    echo $! > /tmp/mulmoclaude-pr-<N>.pid
    ```
    Use the Bash tool with `run_in_background: true` instead of
@@ -184,12 +187,24 @@ clobbers in-progress work. Use a git worktree.
    auto-generated comment exists, replace via `gh api PATCH`
    instead of stacking duplicates.
 
+## Reference comparison (when the user provides an expected look)
+
+When the user supplies an expected-look screenshot or a reference
+URL (「この見た目が期待値」), add an explicit comparison step:
+
+1. Capture the current state of the affected page with Playwright
+   (`browser_navigate` + `browser_take_screenshot`).
+2. Compare it against the reference side by side — layout, spacing,
+   colors, copy, responsive breakpoints the reference implies.
+3. Report matches and mismatches concretely (element + expected vs
+   actual); include the mismatch list in the test plan.
+
 ## Don'ts
 
 - Don't switch the user's main checkout to the PR branch. Always
   worktree.
 - Don't kill processes you didn't explicitly identify. `pkill`
-  patterns must match dev-server names only (`npm run dev`,
+  patterns must match dev-server names only (`yarn dev`,
   `tsx server/index.ts`, `vite`).
 - Don't claim the test passed — you only set it up. The user
   runs the actual click-through.
@@ -219,7 +234,7 @@ recommend swap).
 - **PR isn't OPEN**: stop, report state, no setup.
 - **`yarn install` fails**: surface the error, leave worktree in
   place so user can debug. Don't try to start the dev server.
-- **`npm run dev` exits non-zero before "ready"**: dump the last
+- **`yarn dev` exits non-zero before "ready"**: dump the last
   20 lines of the log, ask user.
 - **Worktree add fails (branch protected, fetch unreachable)**:
   surface and stop.

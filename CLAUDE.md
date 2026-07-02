@@ -7,6 +7,7 @@
 - MUST use **yarn** (`yarn`, `yarn add`, `yarn remove`)
 - NEVER use npm commands
 - MUST use `yarn add` instead of manually editing package.json
+- During upgrade work, if a dependency turns out to be unused, MUST propose removing it (`yarn remove`) instead of upgrading it
 
 ## General
 
@@ -114,6 +115,7 @@ Human context and memory are limited. MUST write code with this in mind:
 - MUST prefer functional approaches (`forEach`, `map`, `filter`, `reduce`) over `for` loops
 - MUST prefer `async/await` over `.then()` chains
 - MUST use explicit type definitions; NEVER use `any`
+- NEVER silence lint/type errors with `eslint-disable`, `@ts-ignore`, or `@ts-expect-error` — fix the types / root cause instead (define proper type files if needed)
 - NEVER use magic numbers; MUST use named constants
 - SHOULD include units in variable names when applicable (e.g., `timeout_ms`, `distance_km`)
 - MUST follow DRY principle (Don't Repeat Yourself)

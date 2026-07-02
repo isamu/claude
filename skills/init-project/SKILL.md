@@ -1,5 +1,5 @@
 ---
-description: Set up a new TypeScript project with standard configuration
+description: Set up a new TypeScript project with standard configuration. Use when the user starts a new project or runs /init-project.
 ---
 
 ## New Project Setup
@@ -9,10 +9,13 @@ When creating a new package.json, always include these scripts:
 - `format` - Prettier
 - `lint` - ESLint
 - `build` - Build command
+- `test` - Tests using Node.js native `node:test` + `node:assert`
+- `typecheck` - Full-project type check (`tsc --noEmit` on tsconfig.json, including tests)
 
 Node.js version: **24** or later
 ESLint must use **flat config** (eslint.config.js), not legacy .eslintrc
 Use **Tailwind CSS v4** (not v3) with `@tailwindcss/vite` plugin
+CI: GitHub Actions matrix MUST cover all three runners — `os: [ubuntu-latest, windows-latest, macos-latest]`
 
 ESLint rules:
 - Indent: 2 spaces
@@ -100,4 +103,4 @@ src/
     cli.ts            # Node only
 ```
 
-Reference: `mulmocast-cli/package.json` exports pattern
+Reference: `/Users/isamu/ss/llm/mulmocast-cli/package.json` exports pattern

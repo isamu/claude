@@ -34,16 +34,18 @@ branch — the skill should auto-target that PR.
 OWNER_REPO=$(gh repo view --json nameWithOwner --jq .nameWithOwner)
 BRANCH=$(git rev-parse --abbrev-ref HEAD)
 
-# A merged PR's branch is usually deleted, so check the merge
-# commit on the current branch first (works when the user is
-# back on `main` after a `--delete-branch` merge).
-LAST_MERGE_PR=$(git log -1 --merges --pretty=%s | grep -oE '#[0-9]+' | head -1 | tr -d '#')
-
-# Then fall back to "the PR whose head is this branch".
-HEAD_PR=$(gh pr list --repo "$OWNER_REPO" --head "$BRANCH" --state all \
+# Prefer the merged PR whose head is THIS branch — that's the PR
+# the user just merged from this working tree. The last merge
+# commit on the branch can belong to someone else's PR (e.g. a
+# main-sync merge or another PR that landed after ours).
+HEAD_PR=$(gh pr list --repo "$OWNER_REPO" --head "$BRANCH" --state merged \
           --limit 1 --json number --jq '.[0].number')
 
-PR_N="${LAST_MERGE_PR:-$HEAD_PR}"
+# Fallback: back on `main` after a `--delete-branch` merge, the
+# head lookup misses — use the last merge commit's PR number.
+LAST_MERGE_PR=$(git log -1 --merges --pretty=%s | grep -oE '#[0-9]+' | head -1 | tr -d '#')
+
+PR_N="${HEAD_PR:-$LAST_MERGE_PR}"
 
 if [ -z "$PR_N" ]; then
   echo "No PR found for branch '$BRANCH' in $OWNER_REPO." >&2
@@ -55,6 +57,21 @@ fi
 Surface the inferred PR number to the user before proceeding so
 they can abort if the inference picked the wrong PR (e.g. the
 last merge on this branch was a stale merge from days ago).
+
+## Wait-for-CI mode (pre-merge)
+
+When the user says 「ci通ったらマージ」 ("merge once CI is green") or
+similar, the PR isn't merged yet — run this mode first:
+
+1. `gh pr checks <N> --watch` in the background; report failures as
+   they appear and fix them (use `gh-review-loop` for the fix-push
+   loop when bots are involved).
+2. Once all checks are green, triage any new bot comments.
+3. Confirm with the user, then `gh pr merge <N> --merge`.
+4. Continue with the tidy steps below.
+
+「マージ手前まで」 ("stop at merge-ready"): do steps 1-2 only, report
+merge-ready, and stop without merging.
 
 ## Steps
 
@@ -158,6 +175,9 @@ should NOT move until the LAST referenced PR merges. Heuristic:
 
 ### 6. Move the plan file
 
+Confirm with the user before pushing the chore branch and opening
+the PR — pushes need explicit approval.
+
 For each plan to move, create one chore PR:
 
 ```bash
@@ -203,9 +223,11 @@ To the user (chat), one short summary:
   (audit / umbrella plans). Check by `grep -r "plans/<file>.md"`
   in PR descriptions of currently-open PRs.
 - Don't post duplicate comments. If a prior `pr-merge-tidy`
-  comment already exists on the issue, replace via `gh api PATCH`
-  instead of stacking. Detect via the marker
-  `<!-- pr-merge-tidy:auto-generated -->` in the body.
+  comment already exists on the issue, replace it instead of
+  stacking:
+  `gh api --method PATCH repos/<owner>/<repo>/issues/comments/<comment-id> -f body="<new body>"`.
+  Detect via the marker `<!-- pr-merge-tidy:auto-generated -->`
+  in the body.
 - Don't push the chore PR straight to main even if branch
   protections allow — keep the PR + review pattern consistent.
 
