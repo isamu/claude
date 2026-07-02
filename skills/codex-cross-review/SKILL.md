@@ -15,7 +15,7 @@ The user supplies a PR URL (`https://github.com/<owner>/<repo>/pull/<N>`) or jus
 1. `date` — capture current ISO time so you can filter "new" comments per iteration.
 2. `gh pr view <N> --json state,headRefName,baseRefName,mergeable,isDraft,statusCheckRollup` — confirm OPEN & not draft. If not, stop and report.
 3. `gh pr checkout <N>` — check out the branch locally.
-4. Record `BASE_SHA = git merge-base origin/main HEAD` so you can detect new main commits during the loop.
+4. Resolve the default branch: `DEFAULT_BRANCH=$(gh repo view --json defaultBranchRef -q .defaultBranchRef.name)`. Then record `BASE_SHA = git merge-base "origin/$DEFAULT_BRANCH" HEAD` so you can detect new default-branch commits during the loop.
 5. Read `CLAUDE.md` in the repo root (if present) for project-specific rules — they apply to every fix you commit.
 6. Ensure `codex` CLI is installed (`command -v codex`). If missing, stop and tell the user to install `@openai/codex`.
 
@@ -91,13 +91,13 @@ After any code change, run the project's mandated checks (derived from CLAUDE.md
 
 If any check fails, fix and retry before pushing. Do **not** commit a red build into the loop — it breaks the shared state between reviewers.
 
-### Iteration step E — sync main (before every push)
+### Iteration step E — sync the default branch (before every push)
 
 ```bash
-git fetch origin main
-NEW_MAIN=$(git rev-parse origin/main)
+git fetch origin "$DEFAULT_BRANCH"
+NEW_MAIN=$(git rev-parse "origin/$DEFAULT_BRANCH")
 if [ "$NEW_MAIN" != "$LAST_KNOWN_MAIN" ]; then
-  git merge origin/main --no-edit
+  git merge "origin/$DEFAULT_BRANCH" --no-edit
   # Resolve conflicts: if they're in files you edited this iteration,
   # prefer your edits but re-apply the main-side logic. If they're purely
   # structural (e.g., both sides added an import), auto-resolve.
@@ -110,7 +110,7 @@ fi
 ### Iteration step F — commit + push
 
 - `git add` only the files you touched intentionally. Never `git add -A`.
-- Commit message: `fix: address codex review <iteration-<k>>` with a body listing the findings you accepted, in order. Include `Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>`.
+- Commit message: `fix: address codex review <iteration-<k>>` with a body listing the findings you accepted, in order. Include the current model's standard `Co-Authored-By` trailer.
 - `git push` — normal, no force.
 
 ### Iteration step G — decide whether to loop

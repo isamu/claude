@@ -1,5 +1,5 @@
 ---
-description: GitHub PR review-driven loop. Read whatever the GitHub-side bots (Codex via GitHub Actions, CodeRabbit, Sourcery) posted on the latest commit, evaluate each finding, apply real fixes, push, wait for the bots to re-review the new commit, repeat. Merge once every bot signs off (Codex `LGTM`, CodeRabbit no actionable comments, Sourcery LGTM/skipped) AND CI is green AND the user confirms.
+description: GitHub PR review-driven loop. Read whatever the GitHub-side bots (Codex via GitHub Actions, CodeRabbit, Sourcery) posted on the latest commit, evaluate each finding, apply real fixes, push, wait for the bots to re-review the new commit, repeat. Merge once every bot signs off (Codex `LGTM`, CodeRabbit no actionable comments, Sourcery LGTM/skipped) AND CI is green AND the user confirms. Trigger shorthands the user actually types: "comments", "ci & comments", "ci失敗とcomments", "CIとコメント", "loopしてokになるまで" — all mean: infer the PR from the current branch, fetch new bot/CI feedback, triage, fix, loop until green.
 ---
 
 # GitHub Review Loop
@@ -19,8 +19,10 @@ instead.
 
 PR URL (`https://github.com/<owner>/<repo>/pull/<N>`) or number. If
 only a number, infer owner/repo from `gh repo view --json
-nameWithOwner`. With no arg, infer the PR for the current branch
-(same helper as `pr-merge-tidy`).
+nameWithOwner`. With no arg, infer the PR for the current branch —
+open-PR-first, since this loop targets open PRs:
+`gh pr list --head <branch> --state open --limit 1 --json number`,
+falling back to `--state merged` only if nothing is open.
 
 ## Setup (once)
 
@@ -43,13 +45,17 @@ findings + decisions per iteration so the run is auditable.
 After every push, the bots run asynchronously. Don't fetch comments
 prematurely — you'll see stale findings from the previous commit.
 
-Wait for the **Codex auto-review** check (or whatever your
-project's GitHub Actions workflow is named — typically the job
-called `codex-review` from a workflow like `.github/workflows/codex_review.yaml`).
+Wait for the Codex review workflow. Don't hardcode its name — it
+varies per repo. Discover it once via `gh workflow list` and store
+it in a variable:
 
 ```bash
+# Discover the Codex review workflow name (once per run)
+CODEX_WORKFLOW=$(gh workflow list --json name \
+  --jq '.[] | select(.name | test("codex"; "i")) | .name' | head -1)
+
 # Get the run ID for this PR's latest codex review job
-RUN_ID=$(gh run list --workflow "Codex auto-review" --branch "$HEAD_REF" \
+RUN_ID=$(gh run list --workflow "$CODEX_WORKFLOW" --branch "$HEAD_REF" \
   --limit 1 --json databaseId,headSha --jq \
   ".[] | select(.headSha == \"$LAST_PUSHED_SHA\") | .databaseId")
 
@@ -70,14 +76,20 @@ Filter by author + (created_at > iteration start):
 
 ```bash
 mkdir -p /tmp/gh-review-loop-<N>
+# `github-actions[bot]` posts all sorts of unrelated CI comments, so it
+# only counts as a reviewer when the body carries the `CODEX VERDICT:`
+# marker. If your repo's Codex workflow posts inline findings as
+# github-actions WITHOUT the marker, widen the inline filter for that repo.
 gh api "repos/$OWNER_REPO/issues/$N/comments" --paginate \
-  --jq "[.[] | select(.user.login | test(\"codex|github-actions|coderabbit|sourcery\"; \"i\")) \
+  --jq "[.[] | select((.user.login | test(\"codex|coderabbit|sourcery\"; \"i\")) \
+         or ((.user.login | test(\"github-actions\"; \"i\")) and (.body | contains(\"CODEX VERDICT:\")))) \
        | select(.created_at > \"$ITER_START\") \
        | {user: .user.login, app: .performed_via_github_app.slug, created: .created_at, body}]" \
   > /tmp/gh-review-loop-<N>/top-<k>.json
 
 gh api "repos/$OWNER_REPO/pulls/$N/comments" --paginate \
-  --jq "[.[] | select(.user.login | test(\"codex|github-actions|coderabbit|sourcery\"; \"i\")) \
+  --jq "[.[] | select((.user.login | test(\"codex|coderabbit|sourcery\"; \"i\")) \
+         or ((.user.login | test(\"github-actions\"; \"i\")) and (.body | contains(\"CODEX VERDICT:\")))) \
        | select(.created_at > \"$ITER_START\") \
        | {user: .user.login, app: .performed_via_github_app.slug, created: .created_at, path, line, body}]" \
   > /tmp/gh-review-loop-<N>/inline-<k>.json
@@ -159,8 +171,8 @@ fi
 
 - `git add` only intentionally-touched files. Never `git add -A`.
 - Commit message: `fix: address CR/Codex review iter-<k>` — list
-  accepted findings in the body, attribute by reviewer. Include
-  `Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>`.
+  accepted findings in the body, attribute by reviewer. Use the
+  environment's standard Co-Authored-By trailer for the current model.
 - `git push` (no force).
 - Capture the new HEAD SHA → `LAST_PUSHED_SHA` so step A of the
   next iteration knows which CI run to wait on.
@@ -200,14 +212,16 @@ your branch's CI.
 
 ## Merge (once converged)
 
-1. Verify in chat with the user: "Codex LGTM + my evaluation clear +
+1. If the diff touches Vue/UI files, offer `/pr-ui-test` for a
+   manual click-through before merging.
+2. Verify in chat with the user: "Codex LGTM + my evaluation clear +
    all CI green. Ready to merge?"
-2. On confirmation: `gh pr merge <N> --merge --delete-branch`
+3. On confirmation: `gh pr merge <N> --merge --delete-branch`
    (merge commit per project convention; NEVER squash unless the
    user overrides).
-3. After merge: `git checkout main && git pull`, confirm
+4. After merge: `git checkout main && git pull`, confirm
    `mergeCommit.oid`, report final state.
-4. If `pr-merge-tidy` skill is available and the PR linked an issue
+5. If `pr-merge-tidy` skill is available and the PR linked an issue
    or introduced a plan file, suggest running it as a follow-up.
 
 ## Safety rules (always)
@@ -253,6 +267,18 @@ After every iteration, give a 3-4 line status:
 
 Final report on merge: PR number, merge commit SHA, total iterations,
 notable disagreements with bot findings if any.
+
+## Novelty-diff review (on request)
+
+When the user asks "review and tell me what CodeRabbit/bots missed"
+(e.g. 「code rabbitのコメントにない指摘ある？」):
+
+1. Run an independent review of the full PR diff — don't anchor on
+   the bot threads.
+2. Dedupe your findings against ALL bot comments (top-level, inline,
+   review bodies).
+3. Present only the novel findings in chat, ranked by severity.
+4. Post them as PR comments only after the user confirms.
 
 ## When NOT to use this skill
 
