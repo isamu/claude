@@ -1,10 +1,12 @@
 ---
-description: Sweep recent PRs in the current repo for unaddressed bot review comments (CodeRabbit + Sourcery) and refactoring needs, then fix them. Default window is 24 hours; accepts an override like "3d" / "72h" / "2 days".
+description: Sweep PRs in the current repo for unaddressed bot review comments (CodeRabbit, Sourcery, Codex) and refactoring needs, then fix them. Defaults to single-PR mode on the current branch's PR; pass a time window like "3d" / "72h" / "24h" for sweep mode across recent PRs.
 ---
 
 ## PR Quality Sweep
 
 Audit pull requests updated within a recent time window, triage CodeRabbit findings, and fix everything that is a real issue. Intended to run daily.
+
+For open PRs with an active bot review loop (push → bots re-review → fix), use `gh-review-loop` instead — this skill is for after-the-fact sweeps and one-off triage.
 
 ### Invocation
 
@@ -74,21 +76,23 @@ If the list is empty, report "No PRs in window" and exit.
 
 #### 3. Collect bot review comments per PR
 
-Two bots are wired up on this repo: **CodeRabbit** (`coderabbitai`) and **Sourcery** (`sourcery-ai`). They flag different classes of issue, so BOTH must be fetched. For each PR, fetch in parallel (one shell pipeline, `&` + `wait`):
+Detect which bots reviewed dynamically — don't assume a fixed set per repo. Common authors: **CodeRabbit** (`coderabbitai`), **Sourcery** (`sourcery-ai`), and **Codex** (posting as `codex`, via the `chatgpt-codex-connector` app, or as `github-actions[bot]` — a github-actions comment counts only when its body carries the `CODEX VERDICT:` marker, since that bot also posts unrelated CI noise). The bots flag different classes of issue, so ALL that commented must be fetched. For each PR, fetch in parallel (one shell pipeline, `&` + `wait`):
 
 ```bash
 mkdir -p /tmp/pr-quality-sweep
-BOT_RE='coderabbit|sourcery'
+BOT_RE='coderabbit|sourcery|codex'
 for pr in $PR_NUMBERS; do
   gh api "repos/$OWNER_REPO/pulls/$pr/comments" --paginate \
-    --jq "[.[] | select(.user.login | test(\"$BOT_RE\"; \"i\")) | {id, user: .user.login, path, line, url: .html_url, body: (.body | .[0:1500])}]" \
+    --jq "[.[] | select((.user.login | test(\"$BOT_RE\"; \"i\")) or ((.user.login | test(\"github-actions\"; \"i\")) and (.body | contains(\"CODEX VERDICT:\")))) | {id, user: .user.login, path, line, url: .html_url, body: (.body | .[0:1500])}]" \
     > "/tmp/pr-quality-sweep/pr$pr-inline.json" &
   gh api "repos/$OWNER_REPO/pulls/$pr/reviews" --paginate \
-    --jq "[.[] | select(.user.login | test(\"$BOT_RE\"; \"i\")) | {id, user: .user.login, state, submitted_at, body: (.body | .[0:2000])}]" \
+    --jq "[.[] | select((.user.login | test(\"$BOT_RE\"; \"i\")) or ((.user.login | test(\"github-actions\"; \"i\")) and (.body | contains(\"CODEX VERDICT:\")))) | {id, user: .user.login, state, submitted_at, body: (.body | .[0:2000])}]" \
     > "/tmp/pr-quality-sweep/pr$pr-reviews.json" &
 done
 wait
 ```
+
+Also fetch top-level issue comments (`repos/.../issues/<pr>/comments`) with the same filter — Codex verdicts land there.
 
 `pulls/.../comments` returns inline review comments (the most actionable ones — they have `path` and `line`). `pulls/.../reviews` returns top-level review summaries (Sourcery uses these heavily). **Both are needed**; `gh pr view --json comments` alone misses inline threads, and Sourcery's overall-feedback often lives in the review body, not as an inline comment.
 
@@ -119,7 +123,7 @@ For unaddressed items, assign severity:
 
 Separately from bot comments, scan the diff of each merged PR for things that humans usually catch but the bots might miss:
 
-- Functions over the 20-line / complexity-15 thresholds (`CLAUDE.md` rule)
+- Functions over 20 lines (`CLAUDE.md` rule) or with high cyclomatic complexity (~15+, heuristic)
 - Duplicated 3+ line patterns across files (DRY violation)
 - Files ballooning past ~500 lines
 - New `as` casts, `any`, `console.*` calls outside approved places
@@ -134,7 +138,7 @@ Produce a single markdown report (stdout, not a file unless user asks). Structur
 ```
 ## PR Quality Sweep ({WINDOW})
 
-**Scope**: {N} PRs, {M} bot comments (CodeRabbit + Sourcery; {F} fixed, {D} dismissed, {U} unaddressed). Note any PRs where Sourcery hit its weekly rate limit so the user knows the review is incomplete.
+**Scope**: {N} PRs, {M} bot comments across all detected bots ({F} fixed, {D} dismissed, {U} unaddressed). Note any PRs where a bot hit a rate limit (e.g. Sourcery's weekly cap) so the user knows the review is incomplete.
 
 ### Blockers
 - PR #X — `path/to/file.ts:42` — one-sentence summary → plan: <fix approach>

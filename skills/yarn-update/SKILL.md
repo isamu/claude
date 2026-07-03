@@ -1,19 +1,22 @@
 ---
-description: Update yarn dependencies with safe, staged upgrade strategy and audit
+description: Update yarn dependencies with safe, staged upgrade strategy and audit. Use when asked to update/upgrade yarn dependencies or run a dependency security audit (定期アップデート).
 ---
 
 ## Yarn Dependency Update
 
 ### Phase 1: Safe Upgrades
 
+Yarn 1 has no `--minor`/`--patch`/`--dev` flags for `yarn upgrade` — use npm-check-updates to edit `package.json` ranges, then `yarn install` (accepted npx exception: ncu is a one-shot tool, not a project dep).
+
 1. **Update devDependencies (minor)**:
    ```bash
-   yarn upgrade --dev --minor
+   npx npm-check-updates --dep dev --target minor -u && yarn install
    ```
 2. **Update dependencies (patch)**:
    ```bash
-   yarn upgrade --patch
+   npx npm-check-updates --dep prod --target patch -u && yarn install
    ```
+   Alternatively, use `yarn upgrade-interactive` to pick upgrades manually.
 3. Run `yarn lint`, `yarn build`, `yarn test` to verify
 4. Commit and create PR — wait for CI to pass before proceeding
 
@@ -21,7 +24,7 @@ description: Update yarn dependencies with safe, staged upgrade strategy and aud
 
 1. **Update all devDependencies to latest**:
    ```bash
-   yarn upgrade --dev --latest
+   npx npm-check-updates --dep dev -u && yarn install
    ```
 2. Run `yarn lint`, `yarn build`, `yarn test`
 3. If issues occur, revert and report which packages caused the failure
@@ -33,7 +36,7 @@ description: Update yarn dependencies with safe, staged upgrade strategy and aud
    ```bash
    yarn audit
    ```
-2. For vulnerabilities, `yarn audit fix` usually does not work — instead:
+2. Yarn 1 has no `audit fix`; instead:
    - Identify the vulnerable package and its root dependency from the audit output
    - Delete ONLY the affected package's entry (and its root dependency entry) from `yarn.lock` — do NOT delete the entire file
    - Run `yarn install` to re-resolve only those packages
@@ -43,12 +46,16 @@ description: Update yarn dependencies with safe, staged upgrade strategy and aud
 
 ### Phase 4: Deduplicate
 
-Always run at the end:
+Always run at the end (`npx yarn-deduplicate` is the accepted npx exception for Yarn 1 — it is a one-shot tool, not a project dep):
 ```bash
 npx yarn-deduplicate --strategy=fewer
 yarn install
 ```
 Commit if changes were made.
+
+### Major Bumps
+
+This skill covers bulk minor/patch upgrades plus audit. A single-package **major** upgrade that needs breaking-change research belongs to the `dep-upgrade-safe` skill instead. If a dependency turns out to be unused, propose removing it instead of upgrading.
 
 ### Rules
 
@@ -57,4 +64,4 @@ Commit if changes were made.
 - Confirm CI passes after Phase 1 before proceeding to Phase 2
 - If Phase 2 breaks something, revert and keep only Phase 1 changes
 - Always end with deduplication
-- Merge the PR once CI passes
+- Once CI passes, confirm with the user, then merge with `gh pr merge --merge`

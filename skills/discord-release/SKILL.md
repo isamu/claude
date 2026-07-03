@@ -1,5 +1,5 @@
 ---
-description: Post the latest GitHub release to Discord via webhook with a Japanese summary
+description: Post the latest GitHub release to Discord via webhook with a Japanese summary. Use when asked to announce/post a release to Discord (Discordにリリース告知).
 ---
 
 ## Discord Release Notification
@@ -47,7 +47,7 @@ Post the latest release of the current repository (or a specified repo) to a Dis
 
    **IMPORTANT**:
    - Use `jq` to safely construct the JSON payload — NEVER build JSON by string concatenation.
-   - Truncate description to 2000 characters (Discord embed limit).
+   - Truncate description to 2000 characters as a conservative cap (the embed description limit is 4096; 2000 is the message content limit).
    - Example using jq:
      ```bash
      TAG=$(gh release view --repo "$REPO" --json tagName -q .tagName)
@@ -71,4 +71,4 @@ Post the latest release of the current repository (or a specified repo) to a Dis
 - NEVER hardcode the webhook URL — always use `$DISCORD_WEBHOOK_URL`
 - ALWAYS use `jq` to build JSON payloads safely
 - ALWAYS write the summary in Japanese
-- Truncate long descriptions to stay within Discord's 2000-char embed description limit
+- Truncate long descriptions to 2000 chars — a conservative cap well under Discord's 4096-char embed description limit (2000 is the message content limit)
