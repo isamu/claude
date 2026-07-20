@@ -66,6 +66,11 @@ When asked to fix a bug or implement a new feature:
 - NEVER try quick-fix approaches (hardcoding values, JSON workarounds)
 - MUST check git history/diffs when investigating regressions
 - MUST understand what the user is asking before jumping to debug
+- When one error symptom has MULTIPLE root causes (a "bug family"), MUST map every case into a matrix (symptom × layer × platform / layout / config) and fix + regression-test EACH case — never patch only the one that happened to reproduce, leaving the siblings live. Keep the matrix as a committed doc so the cases can't silently regress.
+- When adding a retry / auto-recovery / replay mechanism, MUST adversarially review it (a dedicated review pass or sub-agent) for the classic failure modes BEFORE shipping: double-execution of side effects on replay, abort/cancel handling during any wait, and over-broad error matching that triggers false-positive retries.
+- When a bug reproduces DETERMINISTICALLY on one branch/commit but not another (e.g. works on `main`, breaks on a feature branch), the cause is in the code path that branch changed — NOT the environment. MUST bisect to the differing code path and REPRODUCE the actual failure in isolation (a minimal script hitting that path) BEFORE proposing environmental explanations (build/Vite cache, `node_modules`, package versions). Do not offer cache/reinstall theories for a deterministic per-branch repro.
+- Before judging ANOTHER repository's state (is this implemented? does this API exist?), MUST `git fetch` and read against `origin/<default-branch>` — never the local working copy, which may sit on a stale branch dozens of commits behind. "grep found nothing" means "not in the commit I am looking at", NOT "not implemented".
+- MUST NOT take an error string, status label, or log line at face value when it is the only evidence. Get the primary value first (the actual variable, API return, or stored record). A message that lumps distinct states together — e.g. reporting a dismissed permission prompt as "denied" — sends the diagnosis hunting for something that was never there.
 
 ## Code Quality
 
@@ -184,6 +189,8 @@ CI MUST work on **Linux, Windows, and macOS** whenever possible.
     matrix:
       os: [ubuntu-latest, windows-latest, macos-latest]
   ```
+
+**Windows-specific traps** → [`docs/windows-gotchas.md`](docs/windows-gotchas.md). MUST read before debugging a Windows-only failure, and before writing path comparisons or `fs.watch` calls that will run there. Covers: `fs.watch` on an 8.3 short path (`C:\Users\RUNNER~1\…`) making libuv `abort()` the process uncatchably; `path.resolve("/etc")` becoming `<drive>:\etc`, so a POSIX path list silently matches nothing; case-folding path comparisons; reading system dirs from `SystemRoot` / `ProgramFiles` rather than hardcoding a drive letter; and checking that the Windows CI job actually runs on PRs before trusting a green check.
 
 ## npm Package Release
 
