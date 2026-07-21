@@ -171,6 +171,14 @@ Human context and memory are limited. MUST write code with this in mind:
   - For large repositories, SHOULD split into subdirectories (e.g., `test/api/`, `test/utils/`)
 - MUST add `test` script to package.json and run tests in CI
 
+### Designing for testability
+
+- MUST separate the **decision** from the I/O: the rule (filter, ordering, cap, validation, formatting, retention) belongs in a **pure function in its own file**; the caller keeps the file reads, spawns, sockets, and HTTP. A rule that can only be reached by booting the app does not get tested.
+- MUST use **dependency injection** at the boundary purity can't cross — pass `now()`, `isValidId`, `hasTmux`, `reapSession`, a file path, and the like as parameters instead of importing the real thing. A module that binds a clock, a home directory, or a process at import time cannot be tested without touching the developer's machine; that is a design defect, not a testing inconvenience.
+- MUST NOT treat "it is a behaviour-preserving refactor" as a reason to ship no tests. Moving code proves nothing about the rules inside it — extract at least the rules the move exposed, and test those.
+- MUST verify that a new test **fails when the code it covers is broken**. Temporarily invert the condition, delete the guard, or revert the fix; watch it go red; restore. A test that also passes against the broken code is testing something else — this happens often and stays invisible unless checked.
+- SHOULD prefer a fake or stub passed in as a parameter over a module mock. Needing a module mock to reach the logic usually means the logic wants extracting.
+
 ### CI / Cross-Platform Compatibility
 
 CI MUST work on **Linux, Windows, and macOS** whenever possible.
@@ -234,7 +242,7 @@ Useful Playwright MCP tools:
 - MUST use existing utility functions from libraries (e.g., `isObject` from graphai) instead of writing your own
 - MUST use `z.infer<typeof schema>` to derive types from Zod schemas; NEVER define duplicate local types
 - MUST use array + `push()` + `join()` pattern for building strings with `const` instead of `let` + `+=`
-- SHOULD separate pure data transformation functions into their own files for reusability and testability
+- MUST separate pure data transformation functions into their own files for reusability and testability (see Testing → Designing for testability)
 - MUST use descriptive format names (e.g., "object format" vs "text format") instead of "new/legacy"
 - MUST verify the correct API signatures for the TARGET version when migrating or upgrading packages — NEVER assume old APIs still work
 
