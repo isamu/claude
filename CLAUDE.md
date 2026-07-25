@@ -19,6 +19,7 @@
 - MUST **check current branch** with `git branch` or `git status` before making changes
   - If the branch is different from expected, MUST ask the user which branch to use
 - MUST **create a feature branch** before starting implementation work
+  - MUST `git fetch` first and check `git log HEAD..origin/<default-branch>` — branch only from an up-to-date base. A local default branch dozens of commits behind produces work built on files the mainline has since moved, renamed, or re-linted, and the whole implementation then has to be relocated. "The repo looked fine when I read it" is not evidence — the working copy can be stale.
 - MUST ask before running: `git commit`, `git push`, `git merge`, `git rebase`, etc.
 - NEVER use `git add .` or `git add <directory>` — MUST add files individually
 - NEVER delete untracked files
@@ -67,6 +68,9 @@ When asked to fix a bug or implement a new feature:
 - MUST check git history/diffs when investigating regressions
 - MUST understand what the user is asking before jumping to debug
 - When one error symptom has MULTIPLE root causes (a "bug family"), MUST map every case into a matrix (symptom × layer × platform / layout / config) and fix + regression-test EACH case — never patch only the one that happened to reproduce, leaving the siblings live. Keep the matrix as a committed doc so the cases can't silently regress.
+- A bug found at ONE call site is a report about a RULE, not about that line. NEVER fix only the site that surfaced. MUST first sweep the whole codebase for every place the same rule is decided — grep the operation, not the symptom (path joins, separator handling, encoding/escaping, timezone/date math, ID normalisation, comparison + sort keys, unit conversion, retry/timeout policy, permission checks) — then classify each hit as: (a) same bug → fix, (b) same rule already hand-rolled correctly → candidate to absorb, (c) deliberately different → leave, with the reason recorded. MUST then ask explicitly: **can this rule become ONE shared function?** If yes, extract it and route the call sites through it instead of repeating the fix. Two or more hand-rolled copies of the rule is proof the helper was already needed.
+  - MUST report the sweep with counts before choosing scope (N sites found / M actually broken / K must-not-touch), so widening vs. staging the change is the user's call, not an assumption.
+  - The classification matters as much as the fix: sites that look identical but are host-internal (containment checks, comparisons against a host-shaped value) MUST be left alone — "normalise everything the grep matched" trades one bug for another.
 - When adding a retry / auto-recovery / replay mechanism, MUST adversarially review it (a dedicated review pass or sub-agent) for the classic failure modes BEFORE shipping: double-execution of side effects on replay, abort/cancel handling during any wait, and over-broad error matching that triggers false-positive retries.
 - When a bug reproduces DETERMINISTICALLY on one branch/commit but not another (e.g. works on `main`, breaks on a feature branch), the cause is in the code path that branch changed — NOT the environment. MUST bisect to the differing code path and REPRODUCE the actual failure in isolation (a minimal script hitting that path) BEFORE proposing environmental explanations (build/Vite cache, `node_modules`, package versions). Do not offer cache/reinstall theories for a deterministic per-branch repro.
 - Before judging ANOTHER repository's state (is this implemented? does this API exist?), MUST `git fetch` and read against `origin/<default-branch>` — never the local working copy, which may sit on a stale branch dozens of commits behind. "grep found nothing" means "not in the commit I am looking at", NOT "not implemented".
@@ -146,6 +150,15 @@ Human context and memory are limited. MUST write code with this in mind:
 - NEVER use `v-html` (security risk)
 - MUST use vue-i18n for text; NEVER hardcode strings in templates (use `$t()`)
 
+## Styling
+
+- MUST style components with **Tailwind utilities only** — NEVER write CSS. No `<style>` / `<style scoped>` block, no per-component `.css` file, no `<style src="...">` import
+- MUST convert an existing `<style>` block to utilities when touching that component, rather than extending it
+- Repeated utility runs MUST be extracted as a shared **component** (or a `class` string constant) — NEVER as a shared CSS class
+- Dynamic / themed values MUST go through design tokens consumed by a utility (`bg-[var(--cell-bg)]`), NEVER a stylesheet rule
+- If something genuinely cannot be a utility (`@keyframes`, `:deep()` into injected markup), MUST put it in the **Tailwind theme or one global stylesheet** with a one-line reason — NEVER in a component
+- Why: shared CSS silently stops applying when a component's template has a **fragment root** — Vue gives the parent's scope id to a single root element only, so scoped rules match nothing and the element falls back to browser defaults (mulmoterminal #787). Utilities are global and have no such failure mode
+
 ## Testing
 
 - SHOULD use Node.js native `node:test` and `node:assert` by default; if the project already uses another runner (e.g. vitest, as in Cloudflare Workers projects), MUST follow the existing one
@@ -178,6 +191,11 @@ Human context and memory are limited. MUST write code with this in mind:
 - MUST NOT treat "it is a behaviour-preserving refactor" as a reason to ship no tests. Moving code proves nothing about the rules inside it — extract at least the rules the move exposed, and test those.
 - MUST verify that a new test **fails when the code it covers is broken**. Temporarily invert the condition, delete the guard, or revert the fix; watch it go red; restore. A test that also passes against the broken code is testing something else — this happens often and stays invisible unless checked.
 - SHOULD prefer a fake or stub passed in as a parameter over a module mock. Needing a module mock to reach the logic usually means the logic wants extracting.
+- SHOULD split into the **smallest pure functions that still have a name worth saying**, and give each its own tests — not one test per file, one per rule. A 40-line function holding four decisions can only be tested through combinations; four named functions can be tested directly, and each one's edge cases become obvious to write.
+- MUST apply this to EXISTING code, not only new code. When touching a large file, look for pure rules already buried in it and extract + test them as part of the work. "Testable" is a property of the codebase to actively restore, not a rule that binds only new lines.
+- When choosing what to test first, **rank by how silently it fails**. A function that throws is already reporting itself; one that returns a plausible wrong value — an off-by-one index, a byte-vs-character length, a wrong date, a mis-cased extension, a permissive validator, a lookup that reads through the prototype chain — is invisible until a user notices bad data. Those come first.
+- SHOULD pin **deliberate asymmetries and known limitations** as tests, with the reason in a comment. Two near-identical helpers that differ on purpose (one trims, one doesn't), a validator that intentionally skips some types, a date epoch correct only after a certain year — record these, or the next reader "fixes" them.
+- In a monorepo, check whether a test imports through the **package name** (resolving to built `dist/`) or the source path. If it is the package name, editing the source changes nothing until that package is rebuilt — mutation checks then report "still green" and prove nothing.
 
 ### CI / Cross-Platform Compatibility
 
