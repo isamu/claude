@@ -67,14 +67,7 @@ When asked to fix a bug or implement a new feature:
 - NEVER try quick-fix approaches (hardcoding values, JSON workarounds)
 - MUST check git history/diffs when investigating regressions
 - MUST understand what the user is asking before jumping to debug
-- When one error symptom has MULTIPLE root causes (a "bug family"), MUST map every case into a matrix (symptom × layer × platform / layout / config) and fix + regression-test EACH case — never patch only the one that happened to reproduce, leaving the siblings live. Keep the matrix as a committed doc so the cases can't silently regress.
-- A bug found at ONE call site is a report about a RULE, not about that line. NEVER fix only the site that surfaced. MUST first sweep the whole codebase for every place the same rule is decided — grep the operation, not the symptom (path joins, separator handling, encoding/escaping, timezone/date math, ID normalisation, comparison + sort keys, unit conversion, retry/timeout policy, permission checks) — then classify each hit as: (a) same bug → fix, (b) same rule already hand-rolled correctly → candidate to absorb, (c) deliberately different → leave, with the reason recorded. MUST then ask explicitly: **can this rule become ONE shared function?** If yes, extract it and route the call sites through it instead of repeating the fix. Two or more hand-rolled copies of the rule is proof the helper was already needed.
-  - MUST report the sweep with counts before choosing scope (N sites found / M actually broken / K must-not-touch), so widening vs. staging the change is the user's call, not an assumption.
-  - The classification matters as much as the fix: sites that look identical but are host-internal (containment checks, comparisons against a host-shaped value) MUST be left alone — "normalise everything the grep matched" trades one bug for another.
-- When adding a retry / auto-recovery / replay mechanism, MUST adversarially review it (a dedicated review pass or sub-agent) for the classic failure modes BEFORE shipping: double-execution of side effects on replay, abort/cancel handling during any wait, and over-broad error matching that triggers false-positive retries.
-- When a bug reproduces DETERMINISTICALLY on one branch/commit but not another (e.g. works on `main`, breaks on a feature branch), the cause is in the code path that branch changed — NOT the environment. MUST bisect to the differing code path and REPRODUCE the actual failure in isolation (a minimal script hitting that path) BEFORE proposing environmental explanations (build/Vite cache, `node_modules`, package versions). Do not offer cache/reinstall theories for a deterministic per-branch repro.
-- Before judging ANOTHER repository's state (is this implemented? does this API exist?), MUST `git fetch` and read against `origin/<default-branch>` — never the local working copy, which may sit on a stale branch dozens of commits behind. "grep found nothing" means "not in the commit I am looking at", NOT "not implemented".
-- MUST NOT take an error string, status label, or log line at face value when it is the only evidence. Get the primary value first (the actual variable, API return, or stored record). A message that lumps distinct states together — e.g. reporting a dismissed permission prompt as "denied" — sends the diagnosis hunting for something that was never there.
+- Deeper methodology — bug-family matrices, sweeping a rule across every call site (then extracting ONE shared helper), adversarially reviewing retry/replay mechanisms, deterministic per-branch repro, `git fetch` before judging another repo's state, and never trusting an error string as the only evidence → [`docs/debugging-methodology.md`](docs/debugging-methodology.md). Read before a non-trivial bug hunt.
 
 ## Code Quality
 
@@ -95,9 +88,17 @@ When asked to fix a bug or implement a new feature:
 - MUST generate proper web components (Vue/Astro) for web documentation — NEVER plain markdown files, unless explicitly asked for markdown
 - MUST VERIFY the actual implementation before writing API/tool documentation — NEVER guess API names or parameters
 
-## New Project Setup
+## Skills
 
-When creating a new project, MUST use `/init-project`.
+Prefer these skills over doing the work by hand:
+
+- **New project** → `/init-project`
+- **Publish an npm package** → `/publish`
+- **Release the MulmoClaude app** (GitHub release, not npm) → `/release-app`
+- **PR bot review triage** → `/gh-review-loop` (see PR Bot Review Handling)
+- **Code review / refactor / security** → `/code-review`, `/simplify`, `/security-review` (see Code Quality)
+- **Web verify / run / UI test / perf** → `/verify`, `run`, `/pr-ui-test`, `/web-perf` (see Web Design & Debugging)
+- **Tech-blog article from a merged PR** → `/pr-to-tech-blog` (see Sharing Knowledge)
 
 ## Import Style
 
@@ -163,64 +164,9 @@ Human context and memory are limited. MUST write code with this in mind:
 
 - SHOULD use Node.js native `node:test` and `node:assert` by default; if the project already uses another runner (e.g. vitest, as in Cloudflare Workers projects), MUST follow the existing one
 - MUST mock external APIs (tests MUST run without API keys)
-- For unit tests, MUST cover the following patterns:
-  - Happy path (expected normal inputs)
-  - Edge cases (unusual but valid inputs)
-  - Corner cases (multiple edge conditions combined)
-  - Boundary cases (min/max values, off-by-one)
-  - Empty cases (empty string, empty array, empty object)
-  - Null/undefined cases
-  - Invalid input (wrong types, corrupted data)
-  - Error cases (expected failures, thrown exceptions)
-  - Negative cases (what should NOT happen)
-  - Regression tests (previously found bugs)
-- For CI integration tests (CLI execution, program output), MUST use **golden tests**:
-  - Store the expected correct output (text, files) in git as golden files
-  - Compare actual output against golden files in CI
-  - Update golden files explicitly when output intentionally changes
-- Test file organization:
-  - MUST place tests in `test/` directory at repository root
-  - File naming: `test_xxx.ts` (e.g., `test_parser.ts`, `test_utils.ts`)
-  - For large repositories, SHOULD split into subdirectories (e.g., `test/api/`, `test/utils/`)
-- MUST add `test` script to package.json and run tests in CI
-
-### Designing for testability
-
-- MUST separate the **decision** from the I/O: the rule (filter, ordering, cap, validation, formatting, retention) belongs in a **pure function in its own file**; the caller keeps the file reads, spawns, sockets, and HTTP. A rule that can only be reached by booting the app does not get tested.
-- MUST use **dependency injection** at the boundary purity can't cross — pass `now()`, `isValidId`, `hasTmux`, `reapSession`, a file path, and the like as parameters instead of importing the real thing. A module that binds a clock, a home directory, or a process at import time cannot be tested without touching the developer's machine; that is a design defect, not a testing inconvenience.
-- MUST NOT treat "it is a behaviour-preserving refactor" as a reason to ship no tests. Moving code proves nothing about the rules inside it — extract at least the rules the move exposed, and test those.
-- MUST verify that a new test **fails when the code it covers is broken**. Temporarily invert the condition, delete the guard, or revert the fix; watch it go red; restore. A test that also passes against the broken code is testing something else — this happens often and stays invisible unless checked.
-- SHOULD prefer a fake or stub passed in as a parameter over a module mock. Needing a module mock to reach the logic usually means the logic wants extracting.
-- SHOULD split into the **smallest pure functions that still have a name worth saying**, and give each its own tests — not one test per file, one per rule. A 40-line function holding four decisions can only be tested through combinations; four named functions can be tested directly, and each one's edge cases become obvious to write.
-- MUST apply this to EXISTING code, not only new code. When touching a large file, look for pure rules already buried in it and extract + test them as part of the work. "Testable" is a property of the codebase to actively restore, not a rule that binds only new lines.
-- When choosing what to test first, **rank by how silently it fails**. A function that throws is already reporting itself; one that returns a plausible wrong value — an off-by-one index, a byte-vs-character length, a wrong date, a mis-cased extension, a permissive validator, a lookup that reads through the prototype chain — is invisible until a user notices bad data. Those come first.
-- SHOULD pin **deliberate asymmetries and known limitations** as tests, with the reason in a comment. Two near-identical helpers that differ on purpose (one trims, one doesn't), a validator that intentionally skips some types, a date epoch correct only after a certain year — record these, or the next reader "fixes" them.
-- In a monorepo, check whether a test imports through the **package name** (resolving to built `dist/`) or the source path. If it is the package name, editing the source changes nothing until that package is rebuilt — mutation checks then report "still green" and prove nothing.
-
-### CI / Cross-Platform Compatibility
-
-CI MUST work on **Linux, Windows, and macOS** whenever possible.
-
-- MUST use `node:path` with `path.join()` / `path.resolve()` instead of hardcoded `/` or `\\` separators
-- MUST use `node:url` (`fileURLToPath`, `pathToFileURL`) for file URL conversions
-- NEVER use shell-specific syntax in npm scripts; use cross-platform alternatives:
-  - `rimraf` instead of `rm -rf`
-  - `shx` or `cpy-cli` instead of `cp` / `mv`
-  - Or use Node.js scripts for complex build steps
-- NEVER rely on case-sensitive file systems (macOS/Windows are case-insensitive by default)
-- SHOULD use `node:os` for platform-specific logic when unavoidable
-- MUST include all three runners in GitHub Actions matrix:
-  ```yaml
-  strategy:
-    matrix:
-      os: [ubuntu-latest, windows-latest, macos-latest]
-  ```
-
-**Windows-specific traps** → [`docs/windows-gotchas.md`](docs/windows-gotchas.md). MUST read before debugging a Windows-only failure, and before writing path comparisons or `fs.watch` calls that will run there. Covers: `fs.watch` on an 8.3 short path (`C:\Users\RUNNER~1\…`) making libuv `abort()` the process uncatchably; `path.resolve("/etc")` becoming `<drive>:\etc`, so a POSIX path list silently matches nothing; case-folding path comparisons; reading system dirs from `SystemRoot` / `ProgramFiles` rather than hardcoding a drive letter; and checking that the Windows CI job actually runs on PRs before trusting a green check.
-
-## npm Package Release
-
-When releasing an npm package, MUST use `/publish`.
+- MUST place tests in `test/` at the repo root, named `test_xxx.ts`; MUST add a `test` script to package.json and run it in CI
+- Full unit-test pattern checklist (happy/edge/corner/boundary/empty/null/invalid/error/negative/regression), golden tests, and the **designing-for-testability** rules → [`docs/testing.md`](docs/testing.md). Read before writing or refactoring tests.
+- Cross-platform CI (Linux/Windows/macOS matrix, `node:path` / `node:url` portability) → [`docs/cross-platform-ci.md`](docs/cross-platform-ci.md); Windows-only traps (`fs.watch`, `path.resolve`) → [`docs/windows-gotchas.md`](docs/windows-gotchas.md) — MUST read before debugging a Windows failure.
 
 ## Web Design & Debugging
 
@@ -231,28 +177,7 @@ MUST prefer the dedicated skills over driving a browser by hand:
 - `/pr-ui-test` — UI regression check for a PR
 - `/web-perf` — web performance investigation
 
-Fall back to the Playwright MCP directly only when those skills don't fit or its `browser_*` tools aren't loaded in the session.
-
-When working the browser by hand for **web design** (CSS, HTML, layouts):
-
-1. MUST use `browser_navigate` to open the page
-2. MUST use `browser_snapshot` to get DOM structure (preferred for understanding layout)
-3. MUST use `browser_take_screenshot` to capture visual state
-4. Make code changes
-5. MUST refresh and verify with screenshot
-
-When **debugging web behaviour** (UI bugs, runtime errors, failing flows):
-
-- MUST drive the page while debugging — actually run the broken flow, don't speculate from the source. Click / type / submit through the steps the user described, observe the live result, then iterate on the fix.
-- MUST check `browser_console_messages` for runtime errors / warnings before assuming the UI is "fine"
-- MUST use `browser_network_requests` to inspect API calls / responses when the bug involves data flow
-- After a fix, MUST re-drive the same flow end-to-end to confirm the regression is gone — never just "looks right in snapshot"
-
-Useful Playwright MCP tools:
-- `browser_resize` - Test responsive design at different breakpoints
-- `browser_evaluate` - Inspect computed styles / state via JavaScript
-- `browser_console_messages` - Read runtime console output
-- `browser_network_requests` - Inspect HTTP traffic
+Falling back to the Playwright MCP by hand (web-design steps, debugging a live flow, the `browser_*` tool list) → [`docs/web-debugging.md`](docs/web-debugging.md).
 
 ## TypeScript Best Practices
 
@@ -260,7 +185,7 @@ Useful Playwright MCP tools:
 - MUST use existing utility functions from libraries (e.g., `isObject` from graphai) instead of writing your own
 - MUST use `z.infer<typeof schema>` to derive types from Zod schemas; NEVER define duplicate local types
 - MUST use array + `push()` + `join()` pattern for building strings with `const` instead of `let` + `+=`
-- MUST separate pure data transformation functions into their own files for reusability and testability (see Testing → Designing for testability)
+- MUST separate pure data transformation functions into their own files for reusability and testability (see [`docs/testing.md`](docs/testing.md) → Designing for testability)
 - MUST use descriptive format names (e.g., "object format" vs "text format") instead of "new/legacy"
 - MUST verify the correct API signatures for the TARGET version when migrating or upgrading packages — NEVER assume old APIs still work
 
