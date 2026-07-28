@@ -21,6 +21,7 @@
 - MUST **create a feature branch** before starting implementation work
   - MUST `git fetch` first and check `git log HEAD..origin/<default-branch>` — branch only from an up-to-date base. A local default branch dozens of commits behind produces work built on files the mainline has since moved, renamed, or re-linted, and the whole implementation then has to be relocated. "The repo looked fine when I read it" is not evidence — the working copy can be stale.
 - MUST ask before running: `git commit`, `git push`, `git merge`, `git rebase`, etc.
+  - **Exception — an agreed fix/feature**: once the change itself is agreed (an issue, a plan file, an approved approach, or a plain "直そう"), go branch → commit → push → **open the PR without stopping to ask**. The user reviews the diff and tries the behavior on the PR while CI runs, so asking first only delays the review. Report what was pushed; don't ask for permission to push it. Merging still follows PR Bot Review Handling.
 - NEVER use `git add .` or `git add <directory>` — MUST add files individually
 - NEVER delete untracked files
 - NEVER push directly to main — MUST create a feature branch and open a PR
@@ -35,11 +36,19 @@
 
 ## PR Bot Review Handling
 
-After pushing to a PR, MUST triage **every** bot reviewer — not just the first one (CodeRabbit `coderabbitai[bot]`, Sourcery `sourcery-ai[bot]`, Codex, plus project-specific reviewers like Socket Security). Use the `/gh-review-loop` skill: it reads what all the GitHub-side bots posted on the latest commit (including inline threads that `gh pr view` omits), applies real fixes, pushes, and waits for re-review until every bot signs off, CI is green, and the user confirms.
+After creating a PR, MUST run `/gh-review-loop` automatically — without waiting to be told — unless a question for the user is still open (an unresolved design decision, or something the PR description flags as needing a human answer). Report the loop's outcome, not each poll.
+
+When the loop converges — every bot signed off, CI green, and nothing left from your own reading — MUST merge without asking, **provided nothing in the change needs a human to look at it**: no UI/UX change that wants `/pr-ui-test` or a visual check, no runtime behavior you could not verify, no destructive or outward-facing effect, no decision the user reserved. After merging, MUST report **what request was implemented** — in the user's own terms, not a file list — plus the merge commit and anything deliberately deferred.
+
+MUST stop and ask instead of merging when any of those escape hatches applies.
+
+After pushing to a PR, MUST triage **every** bot reviewer — not just the first one (CodeRabbit `coderabbitai[bot]`, Sourcery `sourcery-ai[bot]`, Codex, plus project-specific reviewers like Socket Security). Use the `/gh-review-loop` skill: it reads what all the GitHub-side bots posted on the latest commit (including inline threads that `gh pr view` omits), applies real fixes, pushes, and waits for re-review until every bot signs off and CI is green (the merge decision then follows the rule above).
 
 Core principles it enforces — and which MUST hold even when triaging by hand:
 - MUST NOT blindly apply suggestions — verify each against the actual codebase; bots disagree, so pick the right answer rather than satisfying both mechanically.
 - Classify each comment: actionable fix (apply + add tests), valid nitpick (fix if cheap, else note as intentional), false positive / outdated (verify and skip with reason), rate-limited (note; re-check later).
+- **Rejecting a finding needs the SAME verification as applying one.** When the reason for calling it a false positive is "the existing code doesn't do this either", MUST open that existing file and read it — a grep that came back empty is not evidence of absence. The rejection is itself a claim about the codebase, and a wrong one gets posted publicly on the PR and costs an extra review round (mulmoterminal #995: dismissed a missing focus trap because `TimelineOverlay` "didn't trap either"; it imports `trapTabKey` on line 6).
+- **CodeRabbit has a usage limit, so a rate-limited CodeRabbit MUST NOT hold anything up.** Treat that round as "no review from it", say so in the report, and let Codex + CI + your own reading decide. Never wait out its cooldown, and never re-trigger it just to get a review — the limit is expected, not a failure to work around.
 - MUST commit fixes as `fix: address <bot-name> review comments` (name the specific bot), batched into one commit when possible.
 - MUST post a follow-up PR comment summarizing what was addressed vs. deliberately skipped, so the human reviewer doesn't re-walk the bot threads.
 
@@ -67,6 +76,7 @@ When asked to fix a bug or implement a new feature:
 - NEVER try quick-fix approaches (hardcoding values, JSON workarounds)
 - MUST check git history/diffs when investigating regressions
 - MUST understand what the user is asking before jumping to debug
+- **An issue reported by someone else** (a user, another engineer, a review bot) MUST be investigated from the **reported symptom alone** first. Read their suspected cause, their guessed file, or their proposed fix only AFTER reaching your own conclusion — then **answer-check the two against each other** and state explicitly where the reporter was right, where they were wrong, and what they could not have seen from outside. A reporter's diagnosis is a hypothesis, not evidence: read it first and the search anchors on their file, their line, their theory, so the real cause has to overcome that head start. The reconciliation is not a formality — the reporter knows what they were doing and what they expected, which is exactly the half you cannot reconstruct, and each wrong guess marks a place where the product misled a real person.
 - Deeper methodology — bug-family matrices, sweeping a rule across every call site (then extracting ONE shared helper), adversarially reviewing retry/replay mechanisms, deterministic per-branch repro, `git fetch` before judging another repo's state, and never trusting an error string as the only evidence → [`docs/debugging-methodology.md`](docs/debugging-methodology.md). Read before a non-trivial bug hunt.
 
 ## Code Quality
@@ -150,6 +160,10 @@ Human context and memory are limited. MUST write code with this in mind:
 - SHOULD prefer `ref` over `reactive`
 - NEVER use `v-html` (security risk)
 - MUST use vue-i18n for text; NEVER hardcode strings in templates (use `$t()`)
+- MUST extract pure logic out of `.vue` files and composables into their own module, and unit
+  test it directly (node env, no mount) — any decision, transformation, ordering,
+  classification, or formatting rule must not live where only mounting a component can reach
+  it. Mount-based tests are for **wiring** (events, rendering), not for logic.
 
 ## Styling
 
