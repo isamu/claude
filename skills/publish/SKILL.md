@@ -71,11 +71,17 @@ Before running `npm publish`, verify:
      ```
    - Write all release notes in **English** (title, highlights, body),
      regardless of the repo's PR/commit language.
+   - Decide the Latest flag by looking, not by assuming — see the rule below:
+     ```bash
+     # `^v[0-9]` and --limit 1000 are both load-bearing; see the rule below for why.
+     gh release list --limit 1000 --json tagName -q '.[].tagName' | grep -qE '^v[0-9]' \
+       && LATEST_FLAG=--latest=false || LATEST_FLAG=--latest
+     ```
    - Create release with highlights prepended to auto-generated notes,
      using the tag from step 5 (scoped example shown; use plain `X.Y.Z`
      for unscoped packages):
      ```bash
-     gh release create "@scope/name@1.0.0" --latest=false --generate-notes --title "@scope/name@1.0.0" --notes "$(cat <<'EOF'
+     gh release create "@scope/name@1.0.0" "$LATEST_FLAG" --generate-notes --title "@scope/name@1.0.0" --notes "$(cat <<'EOF'
      ## Highlights
 
      - **Feature Name**: Brief description of the feature
@@ -124,5 +130,18 @@ When the repo publishes multiple packages
 - Commit message format: `@package-name@version` (e.g., `@gui-chat-plugin/todo@0.1.1`)
 - Use `git pull origin main` for syncing (NEVER `git rebase`)
 - Add files individually (NEVER `git add -A` or `git add .`)
-- **MUST use `--latest=false`** when creating the GitHub release — package releases must NOT replace the latest app release (e.g., `v0.2.0`). Only `/release-app` creates latest releases.
+- **The Latest flag depends on whether the repo also ships an app release** — check, don't assume:
+  ```bash
+  gh release list --limit 1000 --json tagName -q '.[].tagName' | grep -qE '^v[0-9]' \
+    && LATEST_FLAG=--latest=false || LATEST_FLAG=--latest
+  ```
+  - **An app release exists** → **MUST use `--latest=false`**. Only `/release-app` creates latest releases there, and a package release must not take Latest from `v0.2.0`.
+  - **None anywhere** → package releases are the only releases, so **use `--latest`**. `--latest=false` has nothing to protect and instead strands Latest on whichever old version last claimed it: mulmoterminal sat on `4.1.0` while `4.1.1` and `4.2.0` shipped past it, so the front page advertised a version nobody was running.
+  - When correcting a release published with the wrong flag: `gh release edit <tag> --latest`.
+
+  **Both details in that command are load-bearing, and getting either wrong inverts the answer:**
+  - **`^v[0-9]`, not `^v`.** A package whose name begins with `v` produces tags like graphai's `vanilla.2.0.9`. `^v` reads those as app releases and pins `--latest=false` on a repo that has no app release at all — graphai has 0 real matches and 25 false ones.
+  - **`--limit 1000`, not the default or 100.** `gh release list` returns newest-first, so in a repo publishing many packages the app releases sit far down the list. mulmoclaude has 39 `v*` releases and none of them are in the newest 100 — at `--limit 100` the check answers "no app release" for **the one repo the rule exists to protect**, which is the exact failure it was written to prevent.
+
+  Verified against four repos: mulmoterminal, mulmocast-cli and graphai → `--latest`; mulmoclaude → `--latest=false`.
 - NEVER push feature work directly to main — always create a PR. Sole exception: this flow's version-bump commit + tag (steps 4-5), pushed to main only after explicit user confirmation.

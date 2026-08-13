@@ -1,47 +1,56 @@
 # Global Claude Code Settings
 
-> Keywords: **MUST** / **NEVER** = mandatory. **SHOULD** = recommended unless there is a clear reason not to. **MAY** = optional.
+> **MUST** / **NEVER** = mandatory. **SHOULD** = recommended unless there is a clear reason not to. **MAY** = optional.
+>
+> This file is the rules. The depth behind them — methodology, case studies, platform traps — lives in [`docs/`](docs/) and in skills. MUST follow the pointer before non-trivial work in that area; a rule here without its doc is the summary, not the whole answer.
 
-## Package Manager
+## Prefer a skill over doing the work by hand
 
-- MUST use **yarn** (`yarn`, `yarn add`, `yarn remove`)
-- NEVER use npm commands
+The harness lists every available skill with its description — check it before hand-rolling a multi-step task. The house defaults:
+
+- Start a new project → `/init-project`
+- Publish an npm package / release the MulmoClaude app → `/publish`, `/release-app`
+- Draft a GitHub issue → `/issue-draft`; triage PR bot reviews → `/gh-review-loop`
+- Review, refactor, or security-check a change → `/code-review`, `/simplify`, `/security-review`
+- Any change claiming "this behaves the same" → `/refactor-safely`
+- Run / verify / UI-test / profile a web app → `run`, `/verify`, `/pr-ui-test`, `/web-perf`
+- Tech-blog article from a merged PR → `/pr-to-tech-blog`
+
+## Environment & Packages
+
+- When today's date is needed, MUST run the `date` command — NEVER rely on the model's internal knowledge
+- MUST use **yarn** (`yarn`, `yarn add`, `yarn remove`); NEVER use npm commands
 - MUST use `yarn add` instead of manually editing package.json
-- During upgrade work, if a dependency turns out to be unused, MUST propose removing it (`yarn remove`) instead of upgrading it
-
-## General
-
-- When today's date is needed, MUST run the `date` command to get it — NEVER rely on model's internal knowledge
+- During upgrade work, if a dependency turns out to be unused, MUST propose removing it (`yarn remove`) rather than upgrading it
 
 ## Git Operations
 
-- NEVER perform git commit, push, or other git operations without explicit user permission
-- MUST **check current branch** with `git branch` or `git status` before making changes
-  - If the branch is different from expected, MUST ask the user which branch to use
-- MUST **create a feature branch** before starting implementation work
-  - MUST `git fetch` first and check `git log HEAD..origin/<default-branch>` — branch only from an up-to-date base. A local default branch dozens of commits behind produces work built on files the mainline has since moved, renamed, or re-linted, and the whole implementation then has to be relocated. "The repo looked fine when I read it" is not evidence — the working copy can be stale.
-- MUST ask before running: `git commit`, `git push`, `git merge`, `git rebase`, etc.
-- NEVER use `git add .` or `git add <directory>` — MUST add files individually
+- NEVER run `git commit`, `push`, `merge`, `rebase`, or similar without explicit user permission. Read-only operations (`git status`, `git diff`, `git log`) MAY be run freely
+- MUST **check the current branch** before making changes; if it differs from expected, ask the user which to use
+- MUST **create a feature branch** before starting implementation work — and MUST `git fetch` first, checking `git log HEAD..origin/<default-branch>`. Branch only from an up-to-date base: work built on a stale mainline has to be relocated wholesale. "The repo looked fine when I read it" is not evidence — the working copy can be stale
+- NEVER push directly to main — MUST open a PR, and MUST confirm the target branch first
+- NEVER use `git add .` or `git add <directory>` — add files individually
 - NEVER delete untracked files
-- NEVER push directly to main — MUST create a feature branch and open a PR
-- MUST use merge commit (`--merge`) when merging PRs — NEVER use squash merge
-- NEVER use `git rebase`
-- NEVER use `git push --force` (unconditional overwrite). `git push --force-with-lease` is permitted only on a feature branch you just pushed yourself, after `git commit --amend` or similar local rewrite — it aborts safely if anyone else pushed in the meantime. NEVER force-push (any variant) to `main` or shared branches.
-- MUST use commit message prefixes: `feat:`, `fix:`, `refactor:`, `docs:`, `chore:`
-- When asked to 'create a PR' or 'PR、マージ', this MUST be interpreted as CREATE a pull request, not merge it
-- MUST confirm the correct default/target branch before creating PRs
-- Read-only operations (`git status`, `git diff`, `git log`) MAY be run freely
-- SHOULD commit after each meaningful change (e.g., schema done → commit, utility functions done → commit)
+- NEVER use `git rebase`. MUST merge PRs with a merge commit (`--merge`) — NEVER squash
+- NEVER `git push --force`. `--force-with-lease` is permitted only on a feature branch you just pushed yourself, after a local `git commit --amend` or similar — it aborts safely if anyone else pushed. NEVER force-push, any variant, to `main` or a shared branch
+- MUST use commit prefixes: `feat:`, `fix:`, `refactor:`, `docs:`, `chore:`
+- SHOULD commit after each meaningful change (schema done → commit, utilities done → commit)
+- "create a PR" / "PR、マージ" MUST be read as CREATE a pull request, not merge it
 
-## PR Bot Review Handling
+## GitHub Issues & PRs
 
-After pushing to a PR, MUST triage **every** bot reviewer — not just the first one (CodeRabbit `coderabbitai[bot]`, Sourcery `sourcery-ai[bot]`, Codex, plus project-specific reviewers like Socket Security). Use the `/gh-review-loop` skill: it reads what all the GitHub-side bots posted on the latest commit (including inline threads that `gh pr view` omits), applies real fixes, pushes, and waits for re-review until every bot signs off, CI is green, and the user confirms.
+When asked to fix a bug or implement a feature:
 
-Core principles it enforces — and which MUST hold even when triaging by hand:
-- MUST NOT blindly apply suggestions — verify each against the actual codebase; bots disagree, so pick the right answer rather than satisfying both mechanically.
-- Classify each comment: actionable fix (apply + add tests), valid nitpick (fix if cheap, else note as intentional), false positive / outdated (verify and skip with reason), rate-limited (note; re-check later).
-- MUST commit fixes as `fix: address <bot-name> review comments` (name the specific bot), batched into one commit when possible.
-- MUST post a follow-up PR comment summarizing what was addressed vs. deliberately skipped, so the human reviewer doesn't re-walk the bot threads.
+1. MUST discuss and clarify requirements with the user
+2. MUST create a GitHub issue once scope is clear — **before** the work, not after it is written. Duplicate check, reachability, observed-vs-inferred, regression archaeology, thresholds → [`docs/issue-filing.md`](docs/issue-filing.md), or use `/issue-draft`
+3. MUST create a plan file under the repo's `plans/` directory (`plans/fix-xxx.md`, `plans/feat-xxx.md`), committed to the repo
+4. MUST implement based on the plan
+5. The PR description MUST open with **Summary** and **Items to Confirm / Review** — what changed, and what the author specifically wants a human to check (risky decisions, assumptions, unverified behaviour). AI-generated code makes this mandatory, not optional
+6. MUST then include a **User Prompt** section carrying the user's original request. Across multiple turns, consolidate the user's messages into a coherent summary preserving all intent; clean up formatting but NEVER add content beyond what the user said. Multiple distinct requests → one bullet each
+7. MUST include the implementation approach and key decisions in the PR description — information discussed in chat MUST be persisted as files or PR comments, NEVER left only in chat
+
+- After pushing, MUST triage **every** bot reviewer, not just the first. Use `/gh-review-loop`; principles, and the "never wait for CodeRabbit / docs-only PRs don't wait at all" exceptions → [`docs/pr-bot-review.md`](docs/pr-bot-review.md)
+- A PR addressing only PART of an issue MUST NOT use `Closes #N` — GitHub ignores the prose around the keyword. See [`docs/issue-filing.md`](docs/issue-filing.md)
 
 ## Change Scope Rules
 
@@ -49,98 +58,74 @@ Core principles it enforces — and which MUST hold even when triaging by hand:
 - MUST ask first if something additional seems needed
 - MUST keep PR comments, commit messages, and documentation concise unless asked otherwise
 
-## Bug Fix / Feature Request Workflow
+## Code Quality
 
-When asked to fix a bug or implement a new feature:
+- MUST run after making code changes: `yarn format` → `yarn lint` → `yarn build` → `yarn typecheck`
+  - If a `typecheck` script exists, MUST run it. Many repos split `build` (compile-only, tsconfig.build.json, often excludes `test/`) from `typecheck` (full project, includes tests). CI runs typecheck, so `build` passing proves nothing when a test file references a type you tightened — skipping this is the most common cause of "passed locally, failed in CI"
+- MUST check for duplication against the existing codebase after a significant implementation, and refactor to eliminate it. Prioritise readability
+- SHOULD run `/code-review` after a significant implementation (`--fix` to apply, `--comment` to post inline PR comments); `/simplify` for quality-only refactors, `/security-review` when the change has a security surface
 
-1. MUST discuss and clarify requirements with the user
-2. MUST create a GitHub issue summarizing the task once scope is clear
-3. MUST create a plan file under the repository's `plans/` directory (e.g., `plans/fix-xxx.md` or `plans/feat-xxx.md`) — this file MUST be committed to the repo
-4. MUST implement based on the plan
-5. MUST include the user's original request in the PR description as a "User Prompt" section — when the request spans multiple conversation turns, consolidate the user's messages into a coherent summary that preserves all of the user's intent without omitting details. Clean up formatting but NEVER add content beyond what the user said. If there are multiple distinct requests, list each as a bullet point
-6. MUST include detailed implementation approach, proposed steps, and key decisions in the PR description — important information discussed in chat MUST be persisted as files or PR comments, NEVER only in chat
-7. For AI-generated code PRs, MUST put a **Summary** section and an **Items to Confirm / Review** section at the **very top** of the PR description (before User Prompt, implementation details, etc.). The reviewer should see the summary and explicit review-focus points first, so they know what changed and what the author specifically wants a human to check (e.g., risky decisions, assumptions, unverified behaviors).
+### "This behaves the same" MUST be proved by running both, never by reasoning
+
+Any change whose claim is behaviour preservation — an extraction, a rule lifted into a function, a regex rewritten as a scan, a condition "simplified", a deletion, a lint sweep — MUST be verified by copying the OLD code verbatim into a throwaway harness, running it beside the new code over **generated** inputs, comparing whole results, and stating the count. Unit tests on the new code pin what you *meant*; the risk is what you changed without noticing. Then delete the harness. **MUST use `/refactor-safely`** — it carries the method, the shapes these changes actually break, and the traps that make a broken change look green.
+
+### A wide blast radius is verified by RUNNING THE APP, not by a green suite
+
+A passing suite proves the code you thought about still behaves. It does not prove the app boots, the route is still wired, or the middleware still runs in the order the framework needs. When a change touches something EVERY request or EVERY caller passes through — a route entry point, a middleware, a handler signature, a shared function with many call sites — MUST start the stack and drive the real path: the happy path AND the rejection, varying what the change assumes. MUST name what you could NOT exercise locally and why; silence reads as "the run covered everything". Confirm the process you started is the checkout you changed — something already answering on the port is not evidence. Details → `/refactor-safely` → *What a green suite does not prove*.
 
 ## Debugging Approach
 
-- MUST diagnose the ROOT CAUSE before attempting fixes
-- NEVER try quick-fix approaches (hardcoding values, JSON workarounds)
-- MUST check git history/diffs when investigating regressions
+- MUST diagnose the ROOT CAUSE before attempting fixes; NEVER reach for a quick fix (hardcoded values, JSON workarounds)
 - MUST understand what the user is asking before jumping to debug
-- Deeper methodology — bug-family matrices, sweeping a rule across every call site (then extracting ONE shared helper), adversarially reviewing retry/replay mechanisms, deterministic per-branch repro, `git fetch` before judging another repo's state, and never trusting an error string as the only evidence → [`docs/debugging-methodology.md`](docs/debugging-methodology.md). Read before a non-trivial bug hunt.
+- MUST check git history / diffs when investigating a regression
+- MUST verify a fix against an **external ground truth**, never against another of your own outputs. Two things you produced agreeing proves only that they share your assumptions. Find the authority that already knows the answer — `tmux capture-pane` for a terminal screen, the server's own log for what was sent, the real file on disk — and diff against that (mulmoterminal #1073: "render with the fix" vs "without it" came out identical and shipped; both were diverging from the real screen, which `capture-pane` would have shown in one command)
+- MUST vary the conditions the fix depends on before declaring it verified. One run at one size, one timing, one ordering tests a single point — and the bug lives in what you held constant. Name what the fix assumes and move each one
+- Bug-family matrices, sweeping a rule across every call site, adversarially reviewing retry/replay, deterministic per-branch repro, and never trusting an error string as the only evidence → [`docs/debugging-methodology.md`](docs/debugging-methodology.md). MUST read before a non-trivial bug hunt
 
-## Code Quality
+## Testing
 
-- MUST check for duplicate code with existing codebase after completing a significant implementation, and refactor to eliminate redundancy. Prioritize readability.
-- SHOULD run `/code-review` after a significant implementation to catch bugs and cleanups (`--fix` to apply, `--comment` to post inline PR comments); use `/simplify` for quality-only refactors and `/security-review` when the change has a security surface
-- MUST run after making code changes:
-  1. `yarn format` - Format code with Prettier
-  2. `yarn lint` - Check for linting errors
-  3. `yarn build` - Verify build succeeds
-  4. `yarn typecheck` - If the script is defined in package.json, MUST run it. Many repos split `yarn build` (compile-only, tsconfig.build.json, often excludes `test/`) from `yarn typecheck` (full project, tsconfig.json, includes tests). CI runs typecheck; `yarn build` can pass while typecheck fails when test files reference types you tightened. Skipping this step is the most common cause of "passed locally, failed in CI."
-
-## Documentation Maintenance
-
-- MUST check README.md after changes and update it to reflect the correct specification
-- MUST ensure command examples, options, and usage instructions are accurate
-- MUST update CLAUDE.md/AGENTS.md if they contain relevant CLI documentation
-- MUST check the repository's README.md and docs/ when specs are added or changed, update them accordingly, and include the updates in the same commit
-- MUST generate proper web components (Vue/Astro) for web documentation — NEVER plain markdown files, unless explicitly asked for markdown
-- MUST VERIFY the actual implementation before writing API/tool documentation — NEVER guess API names or parameters
-
-## Skills
-
-Prefer these skills over doing the work by hand:
-
-- **New project** → `/init-project`
-- **Publish an npm package** → `/publish`
-- **Release the MulmoClaude app** (GitHub release, not npm) → `/release-app`
-- **PR bot review triage** → `/gh-review-loop` (see PR Bot Review Handling)
-- **Code review / refactor / security** → `/code-review`, `/simplify`, `/security-review` (see Code Quality)
-- **Web verify / run / UI test / perf** → `/verify`, `run`, `/pr-ui-test`, `/web-perf` (see Web Design & Debugging)
-- **Tech-blog article from a merged PR** → `/pr-to-tech-blog` (see Sharing Knowledge)
-
-## Import Style
-
-- MUST use top-level `import` for npm packages — NEVER use `await import()` for packages that are always needed
-- Dynamic `import()` MAY only be used for conditional/optional dependencies that are not always loaded
-
-- NEVER re-export modules unless there is a specific, justified reason
+- SHOULD use Node.js native `node:test` and `node:assert` by default; if the project already uses another runner (e.g. vitest, as in Cloudflare Workers projects), MUST follow the existing one
+- MUST mock external APIs — tests MUST run without API keys
+- MUST place tests in `test/` at the repo root, named `test_xxx.ts`; MUST add a `test` script to package.json and run it in CI
+- Unit-test pattern checklist, golden tests, and the **designing-for-testability** rules → [`docs/testing.md`](docs/testing.md). MUST read before writing or refactoring tests
+- Cross-platform CI (Linux/Windows/macOS matrix, `node:path` / `node:url` portability) → [`docs/cross-platform-ci.md`](docs/cross-platform-ci.md); Windows-only traps (`fs.watch`, `path.resolve`) → [`docs/windows-gotchas.md`](docs/windows-gotchas.md). MUST read before debugging a Windows failure
 
 ## Coding Style
 
-### Philosophy: Code for Human Comprehension
-
-Human context and memory are limited. MUST write code with this in mind:
-
-- **Compact functions**: Split into small, focused functions that humans can fully comprehend at a glance
-- **Clear naming**: Function and variable names MUST tell a story; a beginner should understand the flow
-- **Minimal scope**: Keep variable scope as small as possible to reduce cognitive load
-- **Readable flow**: Code MUST read like a narrative
-
-### Rules
+**Write for human comprehension.** Human context and memory are limited: compact functions a reader can hold at a glance, names that tell a story, minimal variable scope, a flow that reads as a narrative.
 
 - MUST keep functions under 20 lines; split into smaller functions if needed
 - MUST prefer `const` over `let`; NEVER use `var`
-- MUST prefer functional approaches (`forEach`, `map`, `filter`, `reduce`) over `for` loops
+- MUST prefer `forEach` / `map` / `filter` / `reduce` over `for` loops
 - MUST prefer `async/await` over `.then()` chains
 - MUST use explicit type definitions; NEVER use `any`
 - NEVER silence lint/type errors with `eslint-disable`, `@ts-ignore`, or `@ts-expect-error` — fix the types / root cause instead (define proper type files if needed)
 - NEVER use magic numbers; MUST use named constants
-- SHOULD include units in variable names when applicable (e.g., `timeout_ms`, `distance_km`)
-- MUST follow DRY principle (Don't Repeat Yourself)
-- MUST add try/catch for operations that can fail
-  - Network requests (fetch, API calls) MUST include timeout handling with AbortController
-  - MUST provide meaningful error messages with context (URL, file path, etc.)
+- SHOULD include units in variable names (`timeout_ms`, `distance_km`)
+- MUST follow DRY
+- MUST add try/catch for operations that can fail. Network requests MUST include AbortController timeout handling, and errors MUST carry context (URL, file path)
+- MUST NOT read a file whole unless you know it is bounded — `readFile` throws past ~512 MB and the `catch` reports it as empty, so the biggest data reads as the emptiest → [`docs/large-file-reading.md`](docs/large-file-reading.md)
 
 ### Comments
 
-- **Default to writing no comments.** Lean on names, types, and argument structure to do the explaining. If a comment restates what the next line obviously does (e.g. `// Initialize counter` followed by `let counter = 0;`), delete it.
-- **NEVER explain WHAT the code does** — well-named functions, variables, and types already do that. If a comment is needed to understand WHAT, the better fix is to rename the identifier, tighten the type, or extract a smaller function.
-- **ONLY add a comment when the WHY is non-obvious**: a hidden constraint, a subtle invariant, a workaround for a specific bug, a browser / library quirk, behavior that would surprise a reader. A future maintainer should be able to look at the comment and judge "is this still the right call?" — which means the *reason* must be in the comment, not just the *rule*.
-- **NEVER reference the current task, fix, or callers** in comments (`// used by X`, `// added for the Y flow`, `// see issue #123`) — that context belongs in the PR description / commit message, and rots as the codebase evolves.
-- **Don't write multi-paragraph docstrings or multi-line comment blocks** unless absolutely required by an external contract (public-API JSDoc on a published package). One short line is the cap.
-- When refactoring, **delete WHAT comments aggressively** rather than keeping them around "just in case" — the source of truth is the code.
+- **Default to writing none.** Lean on names, types, and argument structure. A comment restating the next line (`// Initialize counter`) MUST be deleted
+- **NEVER explain WHAT the code does** — rename the identifier, tighten the type, or extract a smaller function instead
+- **ONLY when the WHY is non-obvious**: a hidden constraint, a subtle invariant, a workaround for a specific bug, a library quirk, behaviour that would surprise a reader. The *reason* must be in the comment — not just the rule — so a future maintainer can judge "is this still the right call?"
+- **NEVER reference the current task, fix, or callers** (`// used by X`, `// see issue #123`) — that belongs in the PR description and rots as the codebase evolves
+- One short line is the cap. Multi-paragraph docstrings only where an external contract requires them (public-API JSDoc on a published package)
+- When refactoring, delete WHAT comments aggressively rather than keeping them "just in case" — the source of truth is the code
+
+## TypeScript
+
+- NEVER use `as` type casts; MUST use type guards instead (`const isXxx = (x: unknown): x is Type => { ... }`)
+- MUST use existing utility functions from libraries (e.g. `isObject` from graphai) instead of writing your own
+- MUST use `z.infer<typeof schema>` to derive types from Zod schemas; NEVER define duplicate local types
+- MUST build strings with array + `push()` + `join()` and `const`, never `let` + `+=`
+- MUST separate pure data transformation functions into their own files for reusability and testability ([`docs/testing.md`](docs/testing.md) → Designing for testability)
+- MUST use descriptive format names ("object format" vs "text format"), never "new/legacy"
+- MUST verify the correct API signatures for the TARGET version when migrating or upgrading packages — NEVER assume old APIs still work
+- MUST use top-level `import` for npm packages — `await import()` only for conditional/optional dependencies that are not always loaded
+- NEVER re-export modules unless there is a specific, justified reason
 
 ## Vue.js
 
@@ -160,65 +145,35 @@ Human context and memory are limited. MUST write code with this in mind:
 - If something genuinely cannot be a utility (`@keyframes`, `:deep()` into injected markup), MUST put it in the **Tailwind theme or one global stylesheet** with a one-line reason — NEVER in a component
 - Why: shared CSS silently stops applying when a component's template has a **fragment root** — Vue gives the parent's scope id to a single root element only, so scoped rules match nothing and the element falls back to browser defaults (mulmoterminal #787). Utilities are global and have no such failure mode
 
-## Testing
-
-- SHOULD use Node.js native `node:test` and `node:assert` by default; if the project already uses another runner (e.g. vitest, as in Cloudflare Workers projects), MUST follow the existing one
-- MUST mock external APIs (tests MUST run without API keys)
-- MUST place tests in `test/` at the repo root, named `test_xxx.ts`; MUST add a `test` script to package.json and run it in CI
-- Full unit-test pattern checklist (happy/edge/corner/boundary/empty/null/invalid/error/negative/regression), golden tests, and the **designing-for-testability** rules → [`docs/testing.md`](docs/testing.md). Read before writing or refactoring tests.
-- Cross-platform CI (Linux/Windows/macOS matrix, `node:path` / `node:url` portability) → [`docs/cross-platform-ci.md`](docs/cross-platform-ci.md); Windows-only traps (`fs.watch`, `path.resolve`) → [`docs/windows-gotchas.md`](docs/windows-gotchas.md) — MUST read before debugging a Windows failure.
-
 ## Web Design & Debugging
 
-MUST prefer the dedicated skills over driving a browser by hand:
+MUST prefer the dedicated skills over driving a browser by hand: `/verify` (exercise a change end-to-end and observe real behaviour — run before committing a nontrivial UI change), `run` (launch the app / take a screenshot), `/pr-ui-test` (UI regression check for a PR), `/web-perf` (performance investigation).
 
-- `/verify` — exercise a change end-to-end and observe real behavior (run before committing nontrivial UI changes)
-- `run` — launch and drive the project's app to see a change working / take a screenshot
-- `/pr-ui-test` — UI regression check for a PR
-- `/web-perf` — web performance investigation
+Falling back to the Playwright MCP by hand → [`docs/web-debugging.md`](docs/web-debugging.md).
 
-Falling back to the Playwright MCP by hand (web-design steps, debugging a live flow, the `browser_*` tool list) → [`docs/web-debugging.md`](docs/web-debugging.md).
+## Documentation Maintenance
 
-## TypeScript Best Practices
-
-- NEVER use `as` type casts; MUST use type guards instead (e.g., `const isXxx = (x: unknown): x is Type => { ... }`)
-- MUST use existing utility functions from libraries (e.g., `isObject` from graphai) instead of writing your own
-- MUST use `z.infer<typeof schema>` to derive types from Zod schemas; NEVER define duplicate local types
-- MUST use array + `push()` + `join()` pattern for building strings with `const` instead of `let` + `+=`
-- MUST separate pure data transformation functions into their own files for reusability and testability (see [`docs/testing.md`](docs/testing.md) → Designing for testability)
-- MUST use descriptive format names (e.g., "object format" vs "text format") instead of "new/legacy"
-- MUST verify the correct API signatures for the TARGET version when migrating or upgrading packages — NEVER assume old APIs still work
+- MUST check README.md after changes and update it to reflect the correct specification — command examples, options, and usage instructions MUST be accurate
+- MUST update CLAUDE.md / AGENTS.md if they contain relevant CLI documentation
+- MUST check the repository's README.md and `docs/` when specs are added or changed, and include the updates in the same commit
+- MUST generate proper web components (Vue/Astro) for web documentation — NEVER plain markdown files, unless markdown was explicitly asked for
+- MUST VERIFY the actual implementation before writing API/tool documentation — NEVER guess API names or parameters
 
 ## Sharing Knowledge as Tech-Blog Articles
 
-During development, when a generally-shareable insight emerges — a tool we picked, a workaround we discovered, a non-obvious gotcha — propose turning it into a short tech-blog article.
-
-- Trigger: insights with **value beyond the current repository** (e.g. CI tooling choices, language / framework gotchas, security setups, integration patterns). Skip repo-specific bug fixes, refactors, or anything that only makes sense with full project context.
-- When you have the merged PR for the change, MUST use the `/pr-to-tech-blog` skill — it knows the destination directory, frontmatter shape, and house style.
-- ALWAYS confirm with the user before drafting, and pick a title together if it isn't obvious.
+When an insight with **value beyond the current repository** emerges — a tool we picked, a workaround we discovered, a non-obvious gotcha (CI tooling, language/framework gotchas, security setups, integration patterns) — propose turning it into a short tech-blog article. Skip repo-specific bug fixes and refactors. ALWAYS confirm with the user before drafting, and pick a title together. Once the change has a merged PR, MUST use `/pr-to-tech-blog`.
 
 ## Continuous Learning
 
-When learning something worth remembering, MUST first choose the right destination:
-- **Rules / workflows / coding standards** (apply to all future work) → this file (CLAUDE.md)
-- **Facts about the user, feedback/corrections, or project context** (not derivable from code or git history) → file-based memory (`~/.claude/.../memory/`, with a one-line pointer added to `MEMORY.md`)
+When learning something worth remembering, MUST first choose the destination:
 
-When adding to this file:
-1. MUST confirm with the user before adding
-2. MUST add the learning to the appropriate section (or create a new section if needed)
-3. MUST keep entries concise and actionable
+- **Rules / workflows / coding standards** (apply to all future work) → this file, kept concise and actionable. MUST confirm with the user before adding
+- **Depth behind a rule** — methodology, case studies, platform traps → a file under [`docs/`](docs/), linked from the rule here
+- **A repeatable multi-step procedure** → a skill
+- **Facts about the user, feedback/corrections, or project context** not derivable from code or git history → file-based memory (`~/.claude/.../memory/`, with a one-line pointer in `MEMORY.md`)
 
-After completing a task (PR merge, command completion, etc.), MUST review the session:
-- If the user gave corrections, redirections, or repeated instructions during the session, MUST evaluate whether they indicate a missing rule (→ CLAUDE.md), a fact/preference worth persisting (→ memory), or a candidate for a new skill
-- If so, MUST propose saving it to the appropriate location
+After completing a task (PR merge, command completion), MUST review the session: if the user gave corrections, redirections, or repeated instructions, evaluate whether they indicate a missing rule, a fact worth persisting, or a candidate for a new skill — and propose saving it.
 
 ## Automation Proposals
 
-When the same instruction or pattern is given 2+ times in a session:
-1. MUST recognize the repetition and propose automation
-2. MUST choose the most appropriate method:
-   - **CLAUDE.md**: For rules, guidelines, or workflows (e.g., release process, coding standards)
-   - **Skill/Command**: For executable actions that can be parameterized (e.g., `/release`, `/deploy`)
-   - **Script**: For complex multi-step operations that benefit from scripting
-3. MUST explain the trade-offs and let the user decide
-4. MUST confirm it works as expected after implementation
+When the same instruction or pattern is given 2+ times in a session, MUST recognise the repetition and propose automation — CLAUDE.md for a rule, a **skill/command** for a parameterizable action, a **script** for a complex multi-step operation. MUST explain the trade-offs, let the user decide, and confirm it works as expected afterwards.
