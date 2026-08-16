@@ -1,5 +1,5 @@
 ---
-description: Dual-reviewer loop on a GitHub PR. User pastes a PR URL or number; you invoke Codex to review and post findings, then YOU critically evaluate each finding (necessity, side effects, missing related issues), apply valid fixes, re-request Codex, and repeat until both reviewers agree. Throughout the loop you monitor CI, sync main, and resolve conflicts. Merge only when both reviewers are OK and CI is green.
+description: Dual-reviewer loop on a GitHub PR. User pastes a PR URL or number; you invoke Codex to review and post findings, then YOU critically evaluate each finding (necessity, side effects, missing related issues), apply valid fixes, re-request Codex, and repeat. There is no iteration cap; the exit bar is set by the PR's tier — a trivial PR takes two self-review passes and no Codex round, a simple one takes a single clean round on an unchanged head, a complex one takes two consecutive clean rounds. Any real finding promotes the tier and resets the count. The loop stops early only for a decision that is genuinely the user's. Every request carries a ledger of settled findings so Codex does not re-litigate them, and every fifth round both reviewers re-read the whole PR to check the discussion is still aimed at the right thing. Throughout the loop you monitor CI, sync main, and resolve conflicts. The loop can also conclude the PR should be CLOSED rather than merged. Merge only when both reviewers are OK and CI is green.
 ---
 
 # Codex Cross-Review
@@ -18,10 +18,94 @@ The user supplies a PR URL (`https://github.com/<owner>/<repo>/pull/<N>`) or jus
 4. Resolve the default branch: `DEFAULT_BRANCH=$(gh repo view --json defaultBranchRef -q .defaultBranchRef.name)`. Then record `BASE_SHA = git merge-base "origin/$DEFAULT_BRANCH" HEAD` so you can detect new default-branch commits during the loop.
 5. Read `CLAUDE.md` in the repo root (if present) for project-specific rules — they apply to every fix you commit.
 6. Ensure `codex` CLI is installed (`command -v codex`). If missing, stop and tell the user to install `@openai/codex`.
+7. Read the whole diff (`git diff "$BASE_SHA"...HEAD`) and **tier the PR** — see the next section. Say the tier and the reason to the user before round 1.
 
-## The Loop (ends on two consecutive clean rounds — see step G for the cap)
+## Tier the PR — the exit bar is set by the change, not by the protocol
+
+A five-line changelog edit and a rewrite of the auth middleware do not deserve the same number of rounds. Tier the PR once at setup, from the diff you just read, and state the reason out loud. The tier decides only **how much review the change has to survive** — never how carefully any single round is done.
+
+| Tier | What it is | Reviewers | Exit bar |
+|------|------------|-----------|----------|
+| **T — trivial** | no change to shipped behaviour at all | you, twice | two self-review passes, no Codex round |
+| **S — simple** | one bounded concern; the diff shows the whole behaviour change | Codex + you | ONE clean round, on a head nothing was pushed to |
+| **C — complex** | everything else | Codex + you | TWO consecutive clean rounds, the second on an unchanged head |
+
+**C is the default; T and S are exceptions you have to argue for.** If the argument for "this is trivial" takes more than a sentence, it is not trivial — write the tier down as the sentence you would defend, and if you cannot write that sentence, the tier is C.
+
+### What forces tier C regardless of diff size
+
+- auth, permissions, secrets, payments, crypto, PII
+- destructive or irreversible operations: deletes, data migrations, publish / release, infra teardown
+- concurrency, async ordering, retry / replay, caching and invalidation
+- anything every request or every caller passes through — middleware, a route entry point, a handler signature, a shared helper with many call sites
+- a public API, schema, wire format, or on-disk format change
+- **any claim of behaviour preservation** — "refactor", "no functional change", "same output". Those are proved by running old and new side by side, never by reading (`/refactor-safely`), and a diff that looks small is exactly how they slip through
+- a bug fix whose root cause is not proven, or a bug you could not reproduce
+- generated or vendored files, where the diff is not the source of truth
+
+### What qualifies as tier S
+
+All of these, not most:
+
+- one concern, in one or two source files, and the behaviour change is visible in the diff itself
+- the callers are countable and you counted them
+- the new behaviour has a test that goes red when you break it — existing or added here
+- nothing from the tier-C list
+- every claim in the PR body is checkable against the diff alone
+
+### What qualifies as tier T
+
+No shipped behaviour changes at all:
+
+- docs, comments, README, CHANGELOG
+- a version bump
+- test-only additions that do not touch production code
+- formatting produced by the repo's own formatter
+- a CI or config change that is purely additive and changes no permission, secret, or published artifact
+
+Plus: nothing from the tier-C list, and CI green.
+
+### Promote on contact — the tier only ever moves up
+
+The tier is a prediction about where the bugs are. A real finding is that prediction failing, so it costs you the discount:
+
+- **Any P1 or P2 finding promotes the PR one tier and resets the clean-round count.** T → S at minimum, S → C, and straight to C if the finding lands anywhere in the C list. A tier-T PR that produced a code change was never trivial: promote it and run Codex.
+- **The diff growing into the C list promotes it** too, even with no finding — mid-loop fixes are how a two-file PR acquires a middleware change.
+- **Nothing demotes.** A PR does not become simple because the last two rounds were quiet; quiet rounds are what the exit bar already counts.
+
+This is the pattern the skill already records in *Reviewing someone else's converged PR*: an LGTM followed by `CHANGES REQUESTED` means the first LGTM was premature. Promotion is that lesson applied before the fact rather than after.
+
+### Tier T — two self-review passes, no Codex
+
+You are both reviewers here, so the two passes have to be genuinely separate — a second read taken immediately after the first sees what the first one decided, not what the diff says.
+
+1. **Pass 1** — read the full diff against the PR title and body. Run the project's checks (step D). Push whatever it produces.
+2. Wait for CI green.
+3. **Pass 2** — on the head that will merge, with nothing pushed since pass 1. Re-read the diff *whole*, as if it arrived from someone else with no argument attached: does it do what the body says, does the body claim anything the diff does not support, is any file in it by accident.
+4. **Any code change in pass 2 means the PR was not tier T.** Promote it, and run the Codex loop from round 1.
+
+Post one comment recording it: the tier, the one-sentence reason, what each pass looked at, and that no Codex round ran. The record has to say *why* the second reviewer is missing — otherwise a reader six months out cannot tell a tiered-out PR from one where the protocol was skipped.
+
+## The Loop (ends at the tier's exit bar — no iteration cap)
 
 Keep a per-iteration state file at `/tmp/codex-cross-review-<N>/iteration-<k>.json` summarising what Codex said, what you decided, and what you changed. Helps post-mortem if the loop spins.
+
+### The ledger — one cumulative file, rewritten every iteration
+
+Also keep `/tmp/codex-cross-review-<N>/ledger.md`: every finding raised so far and what happened to it. This file is what you paste into the next Codex prompt (step A), and it is the only thing standing between round 8 and a fourth re-run of an argument settled in round 2.
+
+One row per finding, appended as they are disposed of:
+
+```markdown
+| # | iter | finding (one line) | disposition | why / where |
+|---|------|--------------------|-------------|-------------|
+| 1 | 1 | `parseRange` accepts a reversed span | FIXED | commit a1b2c3d, test `test_range.ts:42` |
+| 2 | 1 | suggests memoising `buildIndex` | REJECTED | called once per boot; measured 0.4 ms |
+| 3 | 2 | i18n key missing in `ja` | FIXED | commit d4e5f6a, all 8 locales |
+| 4 | 2 | wants a retry around the fetch | DEFERRED | needs a backoff policy decision — issue #123 |
+```
+
+Dispositions: `FIXED` / `REJECTED` / `DEFERRED` / `REOPENED`. A `REJECTED` row must carry the evidence that refuted it, not just the verdict — "false positive" tells the next round nothing and invites the finding back.
 
 ### Iteration step A — request Codex review
 
@@ -40,6 +124,20 @@ codex exec --sandbox workspace-write \
    accessibility, i18n lockstep (if this repo has multi-locale dicts), tests coverage for the
    happy path + boundary cases, and consistency with the rest of the codebase.
 
+   ALREADY SETTLED — do not raise these again in the same form:
+   <paste ledger.md verbatim here>
+
+   That table is context so you do not spend this round re-deriving what earlier rounds
+   already decided. It is NOT a list of closed topics: if a resolution is wrong, or a FIXED
+   row's fix does not do what it claims, say so and mark it 'REOPENING #<row>' with the
+   specific evidence. Silence on a bad fix is worse than a repeat finding.
+
+   REPORT EVERYTHING IN ONE PASS. Read the whole diff before you post, and post every
+   finding you have in this round — do not hold some back for a later round, and do not
+   stop at the first problem you find. Give each finding a severity (P1 blocker / P2 should
+   fix / P3 nit) so the response can be ordered. If a finding is a variant of one already in
+   the table, say which row it varies and what is different about it.
+
    At the END of your work, ALWAYS post ONE final top-level comment that starts with a
    verdict marker on its own line:
      - 'CODEX VERDICT: LGTM' if you have no outstanding concerns
@@ -49,6 +147,10 @@ codex exec --sandbox workspace-write \
 ```
 
 Wait for `codex exec` to finish. If it errors out, record and stop the loop (ask user to rerun manually).
+
+**Send the ledger every round, including round 1** (where it is empty — say so explicitly, `_no findings yet_`). A prompt whose shape changes between rounds makes the verdicts harder to compare.
+
+**A finding that repeats despite the ledger is a signal, not noise.** It means either the row's one-liner does not describe what Codex actually meant, or the resolution genuinely did not hold. Re-read your own row before dismissing the repeat — the cheapest explanation is that you summarised the finding into something you had already fixed.
 
 Then post the exchange to the PR — see *Every Codex exchange goes on the PR* below. Do it now, not at the end of the loop: an exchange you did not post while you had it is one you will reconstruct from memory later.
 
@@ -109,6 +211,7 @@ EOF
 3. **Side effects** — Will the suggested fix break callers? Violate a convention? Regress a test? Check before applying.
 4. **Gaps Codex missed** — Look at the diff yourself with fresh eyes. Codex's review is your starting point, not your ceiling.
 5. **Categorise**: MUST-FIX / VALID-NIT / FALSE-POSITIVE / DEFER-TO-FOLLOWUP.
+6. **Write it into the ledger** — one row per finding, before you move to the next one. The ledger is written here, while you still have the evidence in hand; reconstructing it at the top of the next round is how rows become "false positive" with no reason attached, which is what brings the finding back.
 
 Apply MUST-FIX + VALID-NIT in this iteration. For FALSE-POSITIVE and DEFER cases, post a top-level reply explaining why you're not fixing them — Codex can then factor that into the next verdict.
 
@@ -184,26 +287,115 @@ Parse the Codex verdict marker from step B:
 
 An iteration is **clean** only when BOTH reviewers pass on the same commit: Codex posted `CODEX VERDICT: LGTM`, and your own evaluation of that same head has no MUST-FIX left. Anything else is not clean.
 
+Before counting the round, apply *Promote on contact*: a P1 or P2 finding this round moves the tier up and zeroes the count, so a round can raise the exit bar at the same time as it fails to meet it.
+
+- **Clean, and the tier's exit bar is now met** → exit (see *Exit* below).
+- **Clean, but you pushed commits this round** → not an exit at any tier. Push nothing, re-run, and get the verdict again on the unchanged head.
 - **Not clean** → next iteration. This holds whether you applied the finding or declined it: a rebuttal you never put back in front of Codex is a disagreement you awarded to yourself. Post the reasoning, push, and run the next round so it can answer — it may accept, or it may show the rebuttal is the thing that is wrong.
 - `CODEX VERDICT: LGTM` but you found real issues it missed → **not clean**. Fix them, push, loop.
 - No verdict marker → treat as `CHANGES REQUESTED`, note the protocol failure, retry with a reminder.
+- **The next iteration is a multiple of 5** → run the checkpoint first (*Every fifth round*), then step A.
+- **The round established the PR should not exist** → stop the loop and take the close path (*Closing the PR is a legitimate outcome*). This outranks a pending verdict: an LGTM on a change that should not ship is not a reason to merge it.
 
-### Exit: two clean iterations in a row
+### Exit: clean rounds on the head that will merge
 
-**One clean round is not convergence — it is a round that happened to find nothing.** A fix pushed in response to round N is reviewed for the first time in round N+1, and by then most findings are about the loop's own work rather than the original diff. So the loop ends when **two consecutive iterations are clean, with the second reviewing a head the first has already seen** — no new commit between them, or if there was one, it starts the count again.
+Two requirements hold at every tier, because they are what a verdict actually means:
 
-Concretely: a clean round with commits pushed in it does not count as the first of the two. Push nothing, re-run, and get a second clean verdict on the unchanged head.
+- **The clean verdict must cover the head that will merge.** A fix pushed in response to round N is reviewed for the first time in round N+1, so a clean round you pushed commits in never satisfies the bar. The round that fixed things is not the round that ends the loop; the quiet round after it is.
+- **Clean means both reviewers on the same commit** — Codex `LGTM` and your own evaluation of that head with no MUST-FIX left.
 
-### The cap depends on the change
+How many such rounds you need is the tier's only job:
 
-- **Simple changes** (one file, a rename, a config value, a docs edit): stop at **5** and surface the stalemate. Two reviewers who cannot agree in five rounds on something small are disagreeing about something other than the code.
-- **Complex changes** (a behaviour change on a hot path, anything touching a route handler or shared runtime, a diff whose blast radius you could not enumerate at the start): **no cap.** Run until two consecutive clean rounds, however many that takes.
+- **Tier S — one.** A single clean round on a head nothing was pushed to ends the loop.
+- **Tier C — two in a row.** One clean round is not convergence, it is a round that happened to find nothing; and by round 3 most findings are about the loop's own work rather than the original diff. Two consecutive clean iterations, the second reviewing a head the first has already seen — a commit between them starts the count again.
+- **Tier T — no Codex rounds at all**, two self-review passes instead (see *Tier T* above).
 
-The reason to remove the cap is what the rounds actually produce. In one loop, rounds 1–4 each found a real defect and three of them were defects in fixes made *during* the loop: an equivalence fix that was not equivalent, a flag set on the wrong event so the bug it fixed came back by another door, a rule patched at three exits when a fourth existed, and a comment claiming an invariant the code did not have. Stopping at five would have merged the fifth.
+### There is no cap
 
-**Do not stop mid-loop to ask the user whether to continue.** Asking is how a two-reviewer protocol quietly becomes a one-reviewer one. The only things that end it early are a `codex exec` that errors out, and a conflict step E says to escalate.
+**The loop runs until the tier's exit bar is met, however many rounds that takes.** The tier sets how many clean rounds you need; it never sets a round budget and is never a reason to stop early. A one-line diff that cannot converge in five rounds is not a small change — it is a disagreement about something the diff does not show, and it promoted itself out of tier S at the first finding anyway. Stopping there hides exactly the thing worth finding.
 
-If a no-cap loop passes ~10 rounds without two clean in a row, say so and keep going — but read the pattern out loud first. Findings that keep arriving in the same shape mean the fix enumerates bad cases instead of stating the rule (see the note above on inverting to what is PERMITTED); findings that arrive in new shapes each round mean the change is bigger than the PR admits and may want splitting.
+What the rounds actually produce is the argument. In one loop, rounds 1–4 each found a real defect and three of them were defects in fixes made *during* the loop: an equivalence fix that was not equivalent, a flag set on the wrong event so the bug it fixed came back by another door, a rule patched at three exits when a fourth existed, and a comment claiming an invariant the code did not have. A cap of five would have merged the fifth.
+
+**Do not stop mid-loop to ask the user whether to continue.** Asking is how a two-reviewer protocol quietly becomes a one-reviewer one. "This is taking a while", "we are at round 12", and "the remaining findings look minor" are not reasons to stop — they are the loop working.
+
+The loop ends early for exactly these, and nothing else:
+
+1. **A decision that is genuinely the user's** — see *Stopping for the user* below.
+2. **`codex exec` errored out** and does not recover on a retry. Record it and hand back.
+3. **A semantic merge conflict** that step E says to escalate.
+
+If the loop passes ~10 rounds without meeting the exit bar, say so and keep going — but read the pattern out loud first. Findings that keep arriving in the same shape mean the fix enumerates bad cases instead of stating the rule (see the note above on inverting to what is PERMITTED); findings that arrive in new shapes each round mean the change is bigger than the PR admits and may want splitting — or closing.
+
+### Stopping for the user
+
+The exception to "do not stop" is narrow: a question the code cannot settle, where proceeding either way would be guessing at the user's intent. Concretely:
+
+- **The loop concludes the PR should be closed** (see below). Closing someone's work is the user's call, so you bring the recommendation and the evidence, not the action.
+- **The merge go-ahead**, as it always was.
+- **A finding whose resolution is a product or policy decision** — which of two valid behaviours is wanted, whether a breaking change is acceptable, whether a deferred item blocks the release. Post the options and what each costs; do not pick one and call it converged.
+- **A conflict whose correct resolution is not derivable** from either side's history.
+
+Everything else — including a finding you and Codex flatly disagree on — is resolved inside the loop by putting the rebuttal back in front of Codex, not by escalating. When you do stop, say which of these it is, and what specifically you need decided.
+
+### Every fifth round, both reviewers re-read the whole PR
+
+Findings compound. By round 5 the conversation is mostly about the loop's own output, and a loop can converge beautifully onto the wrong thing — a rule refined for four rounds that should not exist, a test suite grown around a behaviour the PR was never supposed to have. Round-by-round review cannot see this, because each round only ever looks at the delta.
+
+So at iterations **5, 10, 15, …**, before step A, run a checkpoint. Both sides look at the PR *whole*, not at the latest findings.
+
+**Your half** — re-read the full diff (`git diff "$BASE_SHA"...HEAD`) against the PR's stated goal, as if seeing it for the first time:
+
+- Does the diff still do what the PR title and body say? If the body now describes a different change, the body is stale or the PR has drifted — name which.
+- How much of the diff is original work versus loop-driven additions? A PR that is now majority review-response is a PR whose centre of gravity moved.
+- Is anything in it there only because a reviewer asked, and no longer justified on its own? Removing it is a legitimate outcome.
+- Would you approve this diff if it arrived fresh today, with none of the argument attached?
+
+**Codex's half** — a different prompt from the normal round, aimed at direction rather than defects:
+
+```bash
+codex exec --sandbox workspace-write \
+  "Checkpoint review of PR #<N> at https://github.com/<owner>/<repo>/pull/<N>.
+
+   This is round <k> of a review loop. Do NOT hunt for new line-level defects this round.
+   Read the PR whole — title, body, full diff, and the review history below — and answer:
+
+   1. Does the diff still accomplish what the PR says it does?
+   2. Has the review conversation drifted onto something other than the PR's purpose?
+   3. Is any part of the diff there only because a reviewer asked for it, without
+      standing on its own merit?
+   4. Should this PR be split, redirected, or CLOSED rather than converged? Say so plainly
+      if yes, with the reason.
+   5. What is the single largest remaining risk in this change?
+
+   Review history so far:
+   <paste ledger.md verbatim here>
+
+   Post your answer as ONE top-level comment starting with 'CODEX CHECKPOINT: round <k>'.
+   Do not apply any fixes and do not post a verdict marker this round."
+```
+
+Post both halves to the PR. A checkpoint round does **not** count toward the tier's exit bar — it produces no verdict — and it does not reset the count either; it sits between rounds. (A PR that reached round 5 is tier C by then in all but name; if it is still labelled S, that label is stale — promote it.) If the checkpoint changes direction (scope cut, split, close), the clean-round count starts over, because what the earlier verdicts approved is no longer what will merge.
+
+### Closing the PR is a legitimate outcome
+
+A review loop is not obliged to end in a merge. Two reviewers arguing in good faith sometimes establish that the change should not exist, and the protocol has to be able to say so — otherwise every PR converges by construction, and the loop's only possible output is approval of whatever it started with.
+
+Recommend closing when the discussion has established one of these, with evidence on the PR:
+
+- **The premise is false.** The bug does not reproduce, the slow path is not hot, the platform behaviour it works around was fixed upstream. A PR fixing something that is not broken has no correct version.
+- **The right fix is somewhere else.** The change treats a symptom, and the loop located the cause in another layer. Say where, and file or link the issue that replaces this.
+- **It has been superseded.** Mainline moved during the loop and now does this, or does something incompatible that arrived with more context.
+- **The cost exceeds the benefit, and the loop measured both.** Not "this is getting complicated" — an actual accounting: what it buys, what it costs to carry, why the balance is negative.
+- **It should be split, and nothing is left after splitting.** If every part belongs in its own PR, this one is a container, not a change.
+
+What "recommend" requires — closing is the user's call, so bring it decided, not open:
+
+1. **Post the case on the PR first**, as one comment: what was believed at the start, what the loop established, and which of the reasons above applies. Link the specific findings and commits that got you there.
+2. **Ask Codex to judge the close recommendation itself** — the same rebuttal discipline as any other finding. A close argued by one reviewer alone is exactly the kind of unilateral conclusion this skill exists to prevent.
+3. **Say what replaces it**: the issue to open, the smaller PR to cut, or nothing at all — and if nothing, say that explicitly, because "closed and forgotten" and "closed because it is already handled" look identical six months out.
+4. **Then stop and ask the user**, with the recommendation stated in one line. Never run `gh pr close` on your own judgement.
+
+A close that arrives at round 9 is not a wasted loop. The rounds are what established the premise was false; without them it would have merged.
 
 ## CI monitoring (continuous, parallel to the loop)
 
@@ -227,7 +419,7 @@ Do not ignore a failing CI just because it looks unrelated to your changes — a
 
 ## Merge (once both reviewers are OK AND CI is green)
 
-1. Confirm with the user: "Codex LGTM + my evaluation clear + all CI checks green. Ready to merge?"
+1. Confirm with the user: "Codex LGTM + my evaluation clear + all CI checks green. Ready to merge?" — and name the tier in that line, because the user is approving the tiering as much as the merge. For tier T say it plainly: "no Codex round — tier T (<the one-sentence reason>), two self-review passes clean."
 2. On user confirmation: `gh pr merge <N> --merge` (merge commit per project convention; NEVER squash unless the user overrides).
 3. After merge: delete the local branch, confirm the mergeCommit SHA, and report the final state.
 
@@ -240,6 +432,10 @@ Do not ignore a failing CI just because it looks unrelated to your changes — a
 - Always sync main before pushing. Stale branches create artificial conflicts and confuse both reviewers.
 - Never commit secrets. Never include `.env` or credential files in the diff.
 - If you find issues Codex missed, do NOT pretend they came from Codex. Attribute them honestly in your commit message ("observed during Claude review, not flagged by Codex").
+- Never `gh pr close` on your own judgement, and never merge one. Both are the user's call; you bring the recommendation with its evidence.
+- The tier is stated on the PR before round 1, promoted the moment a real finding lands, and never lowered. A tier decided silently is a shortcut nobody can audit; a tier lowered mid-loop is the loop grading its own homework.
+- Tiering changes how many rounds a PR must survive, never how a round is done. There is no lighter review, no skipped local checks, and no unverified finding at tier S or T.
+- The ledger is a memory aid, never an authority. A row saying `REJECTED` does not make a repeat finding wrong — it makes it worth re-reading the row.
 - Respect project-specific rules in `CLAUDE.md` — they override these defaults on conflict.
 
 ## What "OK" means from Claude's side
@@ -271,9 +467,14 @@ An approval and a green tick are stamped on a **commit**, not on a PR. If anythi
 
 After every iteration, give the user a 3-4 line status:
 
-- Iteration `<k>` of 5
-- Codex verdict: `LGTM` / `CHANGES REQUESTED (<N> issues)`
+- Iteration `<k>` (no cap — running to tier `<T/S/C>`'s exit bar)
+- Codex verdict: `LGTM` / `CHANGES REQUESTED (<N> issues)` / `CHECKPOINT` on rounds 5, 10, …
 - What you changed this iteration (1-line summary)
+- Clean-round count: `S — 0 of 1` / `C — 1 of 2` — and if the tier was promoted or the count reset, why
 - CI status at this moment
 
-Final report on merge: PR number, merge commit SHA, total iterations, notable disagreements if any.
+This is a status line, not a question. Do not end it with "shall I continue?" — the loop continues unless one of the three early-exit conditions fired, and asking invites a stop the protocol does not want.
+
+Final report on merge: PR number, merge commit SHA, tier it exited at (and any promotion, with what caused it), total iterations, notable disagreements if any.
+
+Final report on a close recommendation: which reason applies, the findings that established it, what replaces the PR, and Codex's judgement of the recommendation.

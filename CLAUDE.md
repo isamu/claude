@@ -52,6 +52,37 @@ When asked to fix a bug or implement a feature:
 - After pushing, MUST triage **every** bot reviewer, not just the first. Use `/gh-review-loop`; principles, and the "never wait for CodeRabbit / docs-only PRs don't wait at all" exceptions → [`docs/pr-bot-review.md`](docs/pr-bot-review.md)
 - A PR addressing only PART of an issue MUST NOT use `Closes #N` — GitHub ignores the prose around the keyword. See [`docs/issue-filing.md`](docs/issue-filing.md)
 
+## Working one backlog issue in parallel
+
+A tracking issue holding a list of entries — a lint backlog, a migration, an audit — invites several agents at once. What breaks is never the code; it is the *coordination*, and every rule below was paid for. Depth and the case studies → [`docs/parallel-tranches.md`](docs/parallel-tranches.md). MUST read before running more than two at a time.
+
+**Before starting**
+
+- MUST **claim the entry on the issue before the work starts** — a comment naming what will be touched as a **function or line range**, not just a file. Two tranches at opposite ends of one file is fine; two in one function is not, and only a specific claim tells them apart. Dispatching a batch → one comment covering all of them, plus a "not claimed" line so the remaining surface stays readable
+- MUST run the collision check as **two** commands: `gh pr list --state open` **and** `git log origin/main --oneline -20 -- <file>`. A PR that merged an hour ago appears in neither the open list nor the working tree
+- MUST confirm the target is **reachable** before extracting from it — `grep` for the caller, `git log --all -S "<symbol>"`. Extracting from an orphan gives it named exports and tests, and argues to the next reader that it is load-bearing. `knip` answers *"is this file imported"*, NOT *"can this be reached"*: a type-only import and a test-only reader each keep a file "used", so a `.tsx` target needs `grep -rn "<ComponentName"` as well
+- **One file per agent.** NEVER two agents in one file, whatever the line distance between them
+
+**How many**
+
+- MUST check `uptime` before adding a worktree or an agent, and MUST NOT add one while the load average is already high — it is the *existing* work that pays, in timeouts that then have to be re-run and re-judged. Budget against cores, not against ambition
+- "The machine is loaded" MUST stop new work, not merely slow it. Reviews of what is already in flight continue, sequentially
+
+**Isolation**
+
+- Each agent MUST get its own git worktree. `node_modules` MUST be symlinked rather than installed per worktree — and the symlinks MUST be removed before the agent finishes. A leftover one makes `npx eslint .` lint a whole second copy of the repo, silently corrupting every count taken afterwards
+- NEVER run a command that mutates shared state from a worktree — `prisma generate` above all, when several tranches share one client. A stale client's errors belong to the environment and MUST NOT be chased as if they were the change
+
+**Measuring under concurrency**
+
+- A timeout at high load is the load, not the change. MUST re-run the file standalone (`--testTimeout=120000 --hookTimeout=120000`) before concluding a failure is yours, and MUST say which failures were re-run
+- A mutation sweep MUST assert the file matches a pristine copy **before** each mutation as well as after each restore. A fifty-minute sweep is a fifty-minute window for a sibling's `cp`, and a stray mutation reads as *more* coverage rather than less
+
+**When an agent dies mid-flight** (session limit, crash)
+
+- MUST resume rather than restart — the worktree holds the work. MUST re-establish state first (`git status`, `git log`, re-run the lint) and MUST verify the source matches the intended version before measuring anything: an interrupted sweep may have left a mutation behind
+- MUST re-sync `origin/main` on resume and re-run the gates on the merged result — CI runs against a combination nobody has executed
+
 ## Change Scope Rules
 
 - MUST only make changes that were explicitly requested — NEVER autonomously add features, tools, packages, or content
@@ -75,12 +106,15 @@ A passing suite proves the code you thought about still behaves. It does not pro
 
 ## Debugging Approach
 
+- MUST establish the issue is REAL before designing a fix — reproduce it, or trace one concrete call chain from a real entry point to the line and name the caller that supplies the input. A report from a user, a bot, a failing test, or your own reading of the code is a **claim**, and the entire fix rests on it being true. If it cannot be reproduced or reached, MUST say so with what was checked, and stop — a fix for a case that cannot happen costs a real review and hides the real defect
+- Once it is real, MUST widen the view before narrowing the fix: the reported case is one instance of a rule — which other call sites decide the same thing, which sibling inputs take the same branch, which layer the rule actually belongs in. MUST state the scope chosen and what was deliberately left out; the symptom is where the bug surfaced, not where it lives
+- MUST shape the fix so the defect becomes testable: extract the rule around the bug into a **pure function in its own file** (no fs / network / clock / process — inject what it needs), route the caller through it, and cover it exhaustively in BOTH directions — normal inputs AND abnormal ones (empty, null/undefined, wrong type, boundary, malformed, thrown errors). A rule reachable only by booting the app is a bug that comes back → [`docs/testing.md`](docs/testing.md)
 - MUST diagnose the ROOT CAUSE before attempting fixes; NEVER reach for a quick fix (hardcoded values, JSON workarounds)
 - MUST understand what the user is asking before jumping to debug
 - MUST check git history / diffs when investigating a regression
 - MUST verify a fix against an **external ground truth**, never against another of your own outputs. Two things you produced agreeing proves only that they share your assumptions. Find the authority that already knows the answer — `tmux capture-pane` for a terminal screen, the server's own log for what was sent, the real file on disk — and diff against that (mulmoterminal #1073: "render with the fix" vs "without it" came out identical and shipped; both were diverging from the real screen, which `capture-pane` would have shown in one command)
 - MUST vary the conditions the fix depends on before declaring it verified. One run at one size, one timing, one ordering tests a single point — and the bug lives in what you held constant. Name what the fix assumes and move each one
-- Bug-family matrices, sweeping a rule across every call site, adversarially reviewing retry/replay, deterministic per-branch repro, and never trusting an error string as the only evidence → [`docs/debugging-methodology.md`](docs/debugging-methodology.md). MUST read before a non-trivial bug hunt
+- Judging whether a report is real, bug-family matrices, sweeping a rule across every call site, adversarially reviewing retry/replay, deterministic per-branch repro, and never trusting an error string as the only evidence → [`docs/debugging-methodology.md`](docs/debugging-methodology.md). MUST read before a non-trivial bug hunt
 
 ## Testing
 
