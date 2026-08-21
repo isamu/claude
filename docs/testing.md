@@ -25,6 +25,40 @@ For CI integration tests (CLI execution, program output), MUST use **golden test
 - Compare actual output against golden files in CI
 - Update golden files explicitly when output intentionally changes
 
+## What survives a differential harness
+
+The `/refactor-safely` harness runs the OLD code beside the new one. Once the refactor lands the old
+code is gone, so the harness cannot be kept — half of it no longer exists. Two things inside it can,
+and they are the parts that cost the thinking:
+
+- **the generator** — which inputs matter for this function. Empty, one element, unicode past the BMP,
+  CRLF, a value at the boundary, malformed, larger than anything real. That list is domain knowledge
+  and it is the same list next time somebody touches the function.
+- **the property** — what must hold with nothing to compare against. A round-trip (`parse(render(x))
+  === x`), an invariant (the output is sorted, the total is preserved), or an oracle: a slow obviously
+  correct implementation kept in the test file on purpose.
+
+Harvest those two into a permanent test before deleting the rest. What you keep is no longer a
+differential harness; it is a property test, and property tests get slow precisely because they are
+worth running over many inputs — which is the real reason to move one off the per-PR path, not that
+deleting it felt wasteful.
+
+## A scheduled suite needs an owner and a seed
+
+A generated-input suite too slow for every pull request MAY run nightly or weekly. Two conditions,
+and neither is optional:
+
+- **A named route for failures.** A scheduled job that goes red and reaches nobody teaches everyone to
+  ignore it, and then it is worse than not existing — it reads as coverage while reporting to no one.
+  File an issue automatically, or make it stop a person. If neither is on offer, do not create the job.
+- **A printed seed, on every run.** A random generator that fails at 3am is unactionable unless the
+  failing seed is in the log and re-running with it reproduces the case. Print the seed on success too:
+  the run that passes today is the one you will want to re-run against tomorrow's change.
+
+Also worth deciding before it exists: what happens when it finds something on a commit from three days
+ago. A nightly failure names a range rather than a change, so the first move is bisecting the seed
+across that range, not reading the diff.
+
 ## Test file organization
 
 - MUST place tests in `test/` directory at repository root

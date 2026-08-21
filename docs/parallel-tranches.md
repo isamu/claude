@@ -35,6 +35,28 @@ tranches at opposite ends of one file is fine. Two in one function is not. Only 
 distinguish them, and the claim is also what a reviewer reads to see whether the two PRs need
 ordering.
 
+### When the mainline decides your open question, the tests are the part that must move
+
+The collision does not always look like duplicated work. Sometimes the mainline answers a question
+your branch had deliberately *deferred* — and then your branch's tests are pinning the answer it
+rejected.
+
+> A tranche found two query-string casts it could not remove without changing the API: narrowing them
+> answers `undefined`, which drops a filter and skips a 404 check. Rather than decide that inside a
+> refactor it filed the question as its own issue and **pinned the existing behaviour with two
+> tests**, which is the right move. Three days later the mainline decided it the other way: a repeated
+> parameter now means *absent*, because answering `?projectId=a&projectId=b` with `'a'` silently
+> scopes a listing to one of two projects the caller named.
+
+Merging then produces a branch whose helper is redundant and whose tests assert the superseded rule.
+Deleting all of it is one wrong answer; keeping the tests as they are is the worse one, because a
+suite that records what used to be true is read by the next person as a specification.
+
+What survives is the coverage at a level the mainline's own tests cannot reach — here the **route**,
+where dropping `projectId` also skips the ownership lookup, which the extracted helper's unit tests
+cannot see. Rewrite those to the new rule and break-verify them against the *old* one: a single
+mutation restoring the previous semantics should turn exactly those tests red and nothing else.
+
 ## The reachability failures
 
 ### `knip` answers a different question than the one you are asking
@@ -70,6 +92,37 @@ Observed twice. The first time it reported 5,130 errors and a nonsense rule brea
 time it reported the backlog as **zero remaining**, which is exactly the shape of a result nobody
 questions. Remove the symlinks in the agent, and pass `--ignore-pattern '.claude/**'` when measuring
 from the root.
+
+### A dismissed CodeQL alert does not survive being moved
+
+Extraction is exactly the operation that breaks a security alert's identity, and the failure is
+one-directional: the alert comes **back**, red, on the pull request that touched nothing.
+
+> A tranche extracted an `fs.stat` out of a 200-line method into a small named one. CodeQL went red
+> with one new high-severity `js/path-injection`. It was not new. It was the same rule, the same
+> sink, the same four sources, the same ten flow steps as an alert on the default branch — which a
+> human had **dismissed as a false positive three weeks earlier**. The line's indentation and its
+> enclosing function had both changed, so its `primaryLocationLineHash` changed, GitHub could not
+> match the two, and it minted a fresh alert with no dismissal attached.
+
+The check that settles it in one command is comparing the two analyses' `codeFlows`, not reading the
+code:
+
+```bash
+gh api repos/<owner>/<repo>/code-scanning/analyses/<id> -H "Accept: application/sarif+json"
+```
+
+Identical sources plus identical step count means the flow did not change; only its address did.
+
+Two API details cost a wrong answer on the way there, both worth knowing before you assert anything
+about a CodeQL result:
+
+- **`code-scanning/alerts` pages.** Without `--paginate` the file looked like it had *one* open alert
+  of that rule. It had sixteen, plus six dismissed. Every conclusion drawn from the short list was
+  about a different alert.
+- **A pull request's analysis is diff-informed.** The branch analysis reported 254 results; the PR's
+  reported 1. So "the PR only has one finding in this file" is not a statement about the file — it is
+  a statement about which findings GitHub chose to recompute.
 
 ### A stale shared Prisma client is not your change
 

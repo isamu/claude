@@ -49,6 +49,7 @@ When asked to fix a bug or implement a feature:
 6. MUST then include a **User Prompt** section carrying the user's original request. Across multiple turns, consolidate the user's messages into a coherent summary preserving all intent; clean up formatting but NEVER add content beyond what the user said. Multiple distinct requests → one bullet each
 7. MUST include the implementation approach and key decisions in the PR description — information discussed in chat MUST be persisted as files or PR comments, NEVER left only in chat
 
+- **One feature, one set of invariants, one PR.** Changes that are right or wrong *together* belong together; anything that could be merged or reverted on its own belongs apart. When the reviewer is another model this matters more than line count — a 2000-line generated migration can be fine and a 150-line change touching auth, caching and concurrency is not. Before opening, ask which parts could be **reverted on their own**; every answer is a PR that should have been separate. Sizing, the PR contract a reviewing model needs, and why a bigger PR compounds through a review loop → [`docs/pr-contract.md`](docs/pr-contract.md)
 - After pushing, MUST triage **every** bot reviewer, not just the first. Use `/gh-review-loop`; principles, and the "never wait for CodeRabbit / docs-only PRs don't wait at all" exceptions → [`docs/pr-bot-review.md`](docs/pr-bot-review.md)
 - A PR addressing only PART of an issue MUST NOT use `Closes #N` — GitHub ignores the prose around the keyword. See [`docs/issue-filing.md`](docs/issue-filing.md)
 
@@ -93,12 +94,13 @@ A tracking issue holding a list of entries — a lint backlog, a migration, an a
 
 - MUST run after making code changes: `yarn format` → `yarn lint` → `yarn build` → `yarn typecheck`
   - If a `typecheck` script exists, MUST run it. Many repos split `build` (compile-only, tsconfig.build.json, often excludes `test/`) from `typecheck` (full project, includes tests). CI runs typecheck, so `build` passing proves nothing when a test file references a type you tightened — skipping this is the most common cause of "passed locally, failed in CI"
+  - **When the machine is already loaded** (check `uptime`), a SMALL change MAY skip the local run and be verified by pushing and reading CI instead. Adding one more build to a machine that is thrashing costs the work already in flight, and CI is the ground truth those commands are approximating anyway. Say in the PR that CI is the verification. This is for a one-line fix, a doc edit, a rename — NOT for anything the "behaves the same" or "wide blast radius" rules cover, which need a run whatever the load is
 - MUST check for duplication against the existing codebase after a significant implementation, and refactor to eliminate it. Prioritise readability
 - SHOULD run `/code-review` after a significant implementation (`--fix` to apply, `--comment` to post inline PR comments); `/simplify` for quality-only refactors, `/security-review` when the change has a security surface
 
 ### "This behaves the same" MUST be proved by running both, never by reasoning
 
-Any change whose claim is behaviour preservation — an extraction, a rule lifted into a function, a regex rewritten as a scan, a condition "simplified", a deletion, a lint sweep — MUST be verified by copying the OLD code verbatim into a throwaway harness, running it beside the new code over **generated** inputs, comparing whole results, and stating the count. Unit tests on the new code pin what you *meant*; the risk is what you changed without noticing. Then delete the harness. **MUST use `/refactor-safely`** — it carries the method, the shapes these changes actually break, and the traps that make a broken change look green.
+Any change whose claim is behaviour preservation — an extraction, a rule lifted into a function, a regex rewritten as a scan, a condition "simplified", a deletion, a lint sweep — MUST be verified by copying the OLD code verbatim into a throwaway harness, running it beside the new code over **generated** inputs, comparing whole results, and stating the count. Unit tests on the new code pin what you *meant*; the risk is what you changed without noticing. **Before deleting it, harvest the two parts that outlive it**: the *generator* (which inputs matter for this function) and the *property* (what must hold with the old code gone). Those become a permanent test — the differential harness itself cannot survive, because half of it is the code you just deleted. **MUST use `/refactor-safely`** — it carries the method, the shapes these changes actually break, and the traps that make a broken change look green.
 
 ### A wide blast radius is verified by RUNNING THE APP, not by a green suite
 
@@ -122,6 +124,7 @@ A passing suite proves the code you thought about still behaves. It does not pro
 - MUST mock external APIs — tests MUST run without API keys
 - MUST place tests in `test/` at the repo root, named `test_xxx.ts`; MUST add a `test` script to package.json and run it in CI
 - Unit-test pattern checklist, golden tests, and the **designing-for-testability** rules → [`docs/testing.md`](docs/testing.md). MUST read before writing or refactoring tests
+- A generated-input suite too slow for every PR MAY run on a schedule instead — but only with a **named route for failures** (an issue filed automatically, or a person it stops) and a **printed seed**. Without the first it is a red job everyone learns to ignore; without the second "it failed last night" is unreproducible → [`docs/testing.md`](docs/testing.md)
 - Cross-platform CI (Linux/Windows/macOS matrix, `node:path` / `node:url` portability) → [`docs/cross-platform-ci.md`](docs/cross-platform-ci.md); Windows-only traps (`fs.watch`, `path.resolve`) → [`docs/windows-gotchas.md`](docs/windows-gotchas.md). MUST read before debugging a Windows failure
 
 ## Coding Style
