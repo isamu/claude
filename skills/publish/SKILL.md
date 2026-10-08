@@ -49,10 +49,16 @@ Before running `npm publish`, verify:
    # git tag "1.0.0"             # unscoped package
    git push origin "<tag>"
    ```
-6. **Publish to npm**:
+6. **Publish to npm** — 🔴 **hand this command to the user; do NOT run it yourself**:
    ```bash
    npm publish --access public --registry https://registry.npmjs.org/
    ```
+   > **`npm publish` needs interactive authentication (OTP / 2FA) every time**, so it
+   > cannot complete inside a tool call — it either hangs waiting for a prompt nobody
+   > can answer, or fails. **Print the command, say which directory to run it in, and
+   > wait for the user to report the result.** Continue to step 7 only after they
+   > confirm it succeeded.
+
    > MUST pass `--registry https://registry.npmjs.org/`. The environment's
    > default registry may be a private mirror (e.g. an internal proxy), so
    > omitting it can publish to the wrong registry or fail auth. Always

@@ -13,6 +13,7 @@ The harness lists every available skill with its description — check it before
 - Draft a GitHub issue → `/issue-draft`; triage PR bot reviews → `/gh-review-loop`
 - Review, refactor, or security-check a change → `/code-review`, `/simplify`, `/security-review`
 - Any change claiming "this behaves the same" → `/refactor-safely`
+- Split a long or complex function, or clear a lint bound on one → `/decompose-function`
 - Run / verify / UI-test / profile a web app → `run`, `/verify`, `/pr-ui-test`, `/web-perf`
 - Tech-blog article from a merged PR → `/pr-to-tech-blog`
 
@@ -22,6 +23,7 @@ The harness lists every available skill with its description — check it before
 - MUST use **yarn** (`yarn`, `yarn add`, `yarn remove`); NEVER use npm commands
 - MUST use `yarn add` instead of manually editing package.json
 - During upgrade work, if a dependency turns out to be unused, MUST propose removing it (`yarn remove`) rather than upgrading it
+- **NEVER run `npm publish` yourself** — it needs interactive auth (OTP / 2FA) on every run, so it cannot complete in a tool call. MUST print the exact command and the directory, hand it to the user, and wait for them to report the result before continuing
 
 ## Git Operations
 
@@ -106,6 +108,27 @@ Any change whose claim is behaviour preservation — an extraction, a rule lifte
 
 A passing suite proves the code you thought about still behaves. It does not prove the app boots, the route is still wired, or the middleware still runs in the order the framework needs. When a change touches something EVERY request or EVERY caller passes through — a route entry point, a middleware, a handler signature, a shared function with many call sites — MUST start the stack and drive the real path: the happy path AND the rejection, varying what the change assumes. MUST name what you could NOT exercise locally and why; silence reads as "the run covered everything". Confirm the process you started is the checkout you changed — something already answering on the port is not evidence. Details → `/refactor-safely` → *What a green suite does not prove*.
 
+### The point of an extraction is SAFETY, not size — and a costed "no" beats a risky lift
+
+Splitting a large function is worth doing because it makes a rule **catchable**, not because the
+number of lines fell. Rank the outcomes and take the highest one available:
+
+> a decision made testable > a block moved with its behaviour **proved** > a block moved with its
+> behaviour **argued** > nothing
+
+**The last is a real option and it beats the third.** When you cannot establish that a lift preserves
+behaviour, do not lift it — report it costed (what it would buy, what the risk is, what would have to
+be established first) and move on. That report is a first-class deliverable: the next person reads it
+instead of rediscovering it. This overrides the 20-line rule, which is a target and not a licence.
+
+**MUST measure the safety, not the shrinkage:** invert each decision you extracted and run the
+**pre-existing** suite against both trees, with any test you added **excluded from the denominator**.
+A denominator holding your own new tests reports a perfect score and says nothing about what shipped.
+The number that means something is *"N decisions that could be silently broken now go red"* — which is
+how a session found a `?? → ||` on a token count that inverted with every one of 163 shipped tests
+green, on a value that is billing input. Depth, and the ways this measurement lies →
+[`docs/testing.md`](docs/testing.md)
+
 ## Debugging Approach
 
 - MUST establish the issue is REAL before designing a fix — reproduce it, or trace one concrete call chain from a real entry point to the line and name the caller that supplies the input. A report from a user, a bot, a failing test, or your own reading of the code is a **claim**, and the entire fix rests on it being true. If it cannot be reproduced or reached, MUST say so with what was checked, and stop — a fix for a case that cannot happen costs a real review and hides the real defect
@@ -126,12 +149,13 @@ A passing suite proves the code you thought about still behaves. It does not pro
 - Unit-test pattern checklist, golden tests, and the **designing-for-testability** rules → [`docs/testing.md`](docs/testing.md). MUST read before writing or refactoring tests
 - A generated-input suite too slow for every PR MAY run on a schedule instead — but only with a **named route for failures** (an issue filed automatically, or a person it stops) and a **printed seed**. Without the first it is a red job everyone learns to ignore; without the second "it failed last night" is unreproducible → [`docs/testing.md`](docs/testing.md)
 - Cross-platform CI (Linux/Windows/macOS matrix, `node:path` / `node:url` portability) → [`docs/cross-platform-ci.md`](docs/cross-platform-ci.md); Windows-only traps (`fs.watch`, `path.resolve`) → [`docs/windows-gotchas.md`](docs/windows-gotchas.md). MUST read before debugging a Windows failure
+- PR CI (push → last required check) MUST finish in **under 10 minutes**. When it doesn't, measure the critical path, then split: lint/typecheck/build once on ubuntu, shard the tests, Windows test-only on PRs with the wide run daily, skip docs-only changes inside the job (never `paths-ignore` on a required check) → [`docs/cross-platform-ci.md`](docs/cross-platform-ci.md) → *Keep PR CI under 10 minutes*. MUST read before restructuring CI
 
 ## Coding Style
 
 **Write for human comprehension.** Human context and memory are limited: compact functions a reader can hold at a glance, names that tell a story, minimal variable scope, a flow that reads as a narrative.
 
-- MUST keep functions under 20 lines; split into smaller functions if needed
+- MUST keep functions under 20 lines; split into smaller functions if needed — but **safety outranks size**, and an extraction you cannot show to be behaviour-preserving is one to decline rather than to make carefully (see *The point of an extraction is SAFETY, not size*)
 - MUST prefer `const` over `let`; NEVER use `var`
 - MUST prefer `forEach` / `map` / `filter` / `reduce` over `for` loops
 - MUST prefer `async/await` over `.then()` chains
@@ -143,6 +167,107 @@ A passing suite proves the code you thought about still behaves. It does not pro
 - MUST add try/catch for operations that can fail. Network requests MUST include AbortController timeout handling, and errors MUST carry context (URL, file path)
 - MUST NOT read a file whole unless you know it is bounded — `readFile` throws past ~512 MB and the `catch` reports it as empty, so the biggest data reads as the emptiest → [`docs/large-file-reading.md`](docs/large-file-reading.md)
 
+### A stale plan or comment is not worth a review round — a wrong line of code is
+
+The rule above is about figures. This one is about the whole surface, and it came from the same
+place: **the review loop is for the code.** A plan file that describes an earlier version of the
+change, a comment that names a helper since renamed, a PR body a few commits behind — none of
+those breaks anything, and every round spent correcting one is a round not spent on the diff.
+
+- **Do not let a reviewer spend rounds on prose.** Say so in the brief: report code findings;
+  prose only when it would mislead someone into a WRONG CHANGE, not when it is merely behind.
+- **Do not fix prose mid-loop** unless it is load-bearing — a comment that would make the next
+  reader do the wrong thing, or a claim the code contradicts in a way that matters. Staleness
+  that a reader would simply skip past is not that.
+- **Bring the prose up to date once, at the end**, when the code has stopped moving. Correcting
+  it repeatedly against a moving diff is how the same paragraph gets rewritten several times and
+  is stale again by the merge.
+- The exception stays what it always was: a comment that would cause a defect if believed. That
+  is a code finding wearing prose, and it is worth the round.
+
+### NEVER put a figure in prose — say what moved, not by how much
+
+**A number written into a PR body, a commit message, a plan file or a code comment is a
+liability with no upside.** It is true for one commit. The next commit — often your own, later
+the same hour — makes it false, and nobody notices because nothing executes prose. Then a
+reviewer checks it, finds it wrong, and a whole review round is spent on a correction that
+improves no code.
+
+Measured on one orion session: a single figure went stale THREE times in a row, each time
+because the next commit added comment lines to the function being measured; a "six of eight"
+was really seven; a ratchet floor was lowered by two because a comment claimed a cushion that a
+previous tranche had already spent. Every one of those cost a round, and not one of them changed
+what shipped.
+
+So:
+
+- **Write the direction and the mechanism, never the magnitude.** "The bound is clear now",
+  "the entry is gone", "one warning left, and this removes it" — not "114 → 96", not
+  "8,549 passed", not "seven of sixteen shapes".
+- **Numbers belong where something executes them**: a constant in code, an assertion in a test,
+  a threshold in a config. Those are checked by running, so they cannot rot silently. A number
+  in a sentence is checked by a human who will eventually be you.
+- **Say what to run instead of what it printed.** "`yarn lint` on this file is clean" beats
+  "warnings 1 → 0", because the reader can reproduce the first and can only doubt the second.
+- **If a magnitude is genuinely the point** — a benchmark result, a cost, a regression
+  threshold — put it in a file the tooling regenerates, or pin it to a sha, and say which
+  command produced it.
+
+This does not license vagueness about WHAT was verified. "Nine timeline shapes came back
+identical" is a measurement someone can re-run; "much faster" is not. The rule is against the
+digit, not against the evidence: name the instrument and the outcome, and let the instrument
+hold the number.
+
+### A name you have to look up is debt
+
+**If a reader cannot tell WHAT a value is from its name alone, the name is wrong.** Not merely
+unclear — wrong, and it is debt every later reader pays. The test is not *"is this a real word"*
+but **"could this be several different things in this codebase?"** If yes, the name has not done
+its job.
+
+The names that keep failing are the short conventional ones, because convention is exactly what
+stops people asking:
+
+| name | why it fails | what it should say |
+|---|---|---|
+| `res` | response to whom, carrying what | `sseResponse` — the Express response SSE frames are written to |
+| `ctx` | context of what | `context` at minimum; better if it names the context |
+| `timers` | which timers, owned by what | `pollTimers`, `turnTimeoutTimers` |
+| `usage` | whose usage, of what, in what unit | `turnTokenUsage` |
+| `model` | the id, the row, or the config? | `modelId`, `modelPricing` |
+| `response` | **still fails** — LLM response? `fetch` response? HTTP response? | `llmResponse`, `gatewayResponse`, `sseResponse` |
+
+`response` is the instructive row: a full English word, and still ambiguous, because a codebase
+that serves HTTP *and* calls an LLM *and* uses `fetch` has three of them. **Lengthening a name
+is not the fix — disambiguating it is.** NEVER rename to a longer synonym carrying the same
+ambiguity (`res` → `response`, `cfg` → `config` where several configs exist).
+
+**"Which kind" is only the first axis. The second is WHOLE or PART, and it is missed more
+often.** A value that is one fragment of a stream MUST say it is a fragment; a name that reads
+as the complete thing while holding a piece is how a partial gets rendered, saved or billed as
+if it were final:
+
+| holds | a name that lies | a name that says it |
+|---|---|---|
+| one `text-delta` off the SSE stream | `text`, `content` | `textDelta`, `deltaText` |
+| one chunk being replayed | `chunk` | `cosmeticChunk`, `replayChunk` |
+| one SSE frame | `event`, `data` | `sseFrame` |
+| everything accumulated so far | `text` | `assistantTextSoFar`, `accumulatedText` |
+| the finished turn's text | `text` | `finalAssistantText` |
+
+The last two matter together: **"so far" and "final" must be distinguishable at a glance**,
+because every bug in a streaming path is one of them being used where the other belonged.
+
+**A rename is behaviour-preserving ONLY if nothing reads the name as data.** Source-text guards,
+AST passes keyed to an identifier, and census tests all break *silently*: an
+`expect(source).not.toContain('writeSseData(res, …)')` becomes **vacuously true** the moment
+`res` is renamed, and stays green while checking nothing. Before renaming, `grep` the tests for
+the identifier **as a string literal** and treat every hit as part of the change.
+
+Types carry the same duty — `MessageLoopContext` is a good name because it says *which* context.
+This is *include units in variable names* one level up: `timeout_ms` beats `timeout` for exactly
+the reason `sseResponse` beats `res`.
+
 ### Comments
 
 - **Default to writing none.** Lean on names, types, and argument structure. A comment restating the next line (`// Initialize counter`) MUST be deleted
@@ -151,6 +276,9 @@ A passing suite proves the code you thought about still behaves. It does not pro
 - **NEVER reference the current task, fix, or callers** (`// used by X`, `// see issue #123`) — that belongs in the PR description and rots as the codebase evolves
 - One short line is the cap. Multi-paragraph docstrings only where an external contract requires them (public-API JSDoc on a published package)
 - When refactoring, delete WHAT comments aggressively rather than keeping them "just in case" — the source of truth is the code
+- **A comment corrected TWICE is one to delete, or to replace with a command.** Explaining a WHY invites stating a rule, and a rule inferred from one measurement is almost always narrower than the real one. One orion comment cost FOUR review rounds: each replacement was a fresh guess and each was wrong in a new way. What ended it was `leave X in and run <command>: the errors land on …` — **a command the reader can run cannot be too narrow.** Prefer naming the instrument over stating the law
+- **NEVER correct a comment from a measurement that changed two things at once.** Two of those four wrong sentences came from a compound mutation with the result credited to whichever half the sentence was about. One change per probe, and read back WHAT was flagged rather than how many
+- **Do not keep re-explaining.** Past one short line, the next sentence is usually defending the first. Explaining a correction, then explaining the correction to the correction, is how a comment outgrows the code it sits on — cut back to the shortest true statement instead of adding a qualifier
 
 ## TypeScript
 
@@ -163,6 +291,7 @@ A passing suite proves the code you thought about still behaves. It does not pro
 - MUST verify the correct API signatures for the TARGET version when migrating or upgrading packages — NEVER assume old APIs still work
 - MUST use top-level `import` for npm packages — `await import()` only for conditional/optional dependencies that are not always loaded
 - NEVER re-export modules unless there is a specific, justified reason
+- A type-aware lint rule reporting something that cannot be true, or a dependency whose exports are silently `any`, is an ENVIRONMENT fault and not a code fault — the two causes, the one-command diagnosis for each, and why `yarn typecheck` cannot see either → [`docs/typescript-tooling.md`](docs/typescript-tooling.md)
 
 ## Vue.js
 
@@ -172,6 +301,8 @@ A passing suite proves the code you thought about still behaves. It does not pro
 - SHOULD prefer `ref` over `reactive`
 - NEVER use `v-html` (security risk)
 - MUST use vue-i18n for text; NEVER hardcode strings in templates (use `$t()`)
+- **`:key` is identity, NEVER position.** MUST NOT change a `v-for` key from a value to `index` — on reorder, insert or delete the key stays with the slot instead of the item, so Vue reuses the wrong element's DOM and typed-in values, focus and component state land on the neighbouring row. A type checker rejecting `string | null` is the usual way in; the fix is the **value** (`:key="timeItem ?? ''"`), never the position
+- MUST read `git log -S':key=' -- <file>` before changing an existing key. Why the current key was chosen lives only in the history — a key written as a value is the trace of someone deciding position was not enough
 
 ## Styling
 
@@ -199,6 +330,30 @@ Falling back to the Playwright MCP by hand → [`docs/web-debugging.md`](docs/we
 ## Sharing Knowledge as Tech-Blog Articles
 
 When an insight with **value beyond the current repository** emerges — a tool we picked, a workaround we discovered, a non-obvious gotcha (CI tooling, language/framework gotchas, security setups, integration patterns) — propose turning it into a short tech-blog article. Skip repo-specific bug fixes and refactors. ALWAYS confirm with the user before drafting, and pick a title together. Once the change has a merged PR, MUST use `/pr-to-tech-blog`.
+
+## Replying in Japanese
+
+**日本語で書いた文の途中に英単語を置かない。** 英語のまま残してよいのは **そのまま打ち込める文字列だけ** — 識別子（`chat.ts`、`onUpstream`）、コマンド（`yarn lint`）、PR / issue 番号、`async` のような言語キーワード、エラー文そのもの。それ以外は概念語なので日本語にする。
+
+判定は一つだけ: **「これは打ち込める文字列か？」** 違うなら訳す。英語で返すときはこの制約は関係ない。
+
+作業の語彙が特に漏れやすい。訳語を決めておく:
+
+| 書かない | 書く |
+|---|---|
+| tranche | 一区切り / 今回の分 |
+| ratchet | 据え置き一覧（減らす方向にしか動かない免除リスト） |
+| bound | **上限**（「境界」は boundary であって上限ではない） |
+| guard | 守り |
+| census | 全体走査 |
+| lift / extract | 持ち上げ / 切り出し |
+| probe | 試し測り |
+| control（実験の） | 対照 |
+| suspension | 待ちが一つ増える |
+| costed no / costed refusal | 理由を測った見送り |
+| mutation sweep | コードを壊して回る |
+
+**Why:** 半分だけ訳した文は、読む側が英語と日本語のどちらの語感で読むか決められず二度読むことになる。技術用語を避けろという話ではなく、一文の中で言語を切り替えるなという話（"ルー大柴みたいな会話はやめて"）。
 
 ## Continuous Learning
 

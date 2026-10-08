@@ -1,5 +1,5 @@
 ---
-description: Dual-reviewer loop on a GitHub PR, tuned to converge in as FEW rounds as possible. User pastes a PR URL or number; you invoke Codex under a one-pass completeness contract — every finding this round, with severity, blast radius and the smallest resolving change — then YOU evaluate the whole batch, settle disagreements with Codex inside the same round, apply every accepted fix in one push, and re-request. Exit is ONE clean round on a head nothing was pushed to; a trivial PR takes two self-review passes and no Codex round at all. The tier sets how DEEP a round is, never how many rounds you owe. Any real finding costs one more round, which is why the loop's whole job is to make each round complete. Setup proves Codex's sandbox can actually run tests, bind a socket and reach GitHub before round 1, because a reviewer that cannot run something reports no findings. Every request carries a COMPACT ledger of settled findings so Codex does not re-litigate them, round 5 folds a whole-PR direction check into the same call rather than spending a round on it, and the third finding against one symbol stops the case-by-case fixing and re-shapes the rule instead. Throughout the loop you monitor CI, sync main, and resolve conflicts. The loop can also conclude the PR should be CLOSED rather than merged. You report to the user once at the end, not every round. Merge only when both reviewers are OK and CI is green.
+description: Dual-reviewer loop on a GitHub PR, tuned to converge in as FEW rounds as possible. User pastes a PR URL or number; you invoke Codex under a one-pass completeness contract — every finding this round, with severity, blast radius and the smallest resolving change — then YOU evaluate the whole batch, settle disagreements with Codex inside the same round, apply every accepted fix in one push, and re-request. Exit is ONE clean round on a head nothing was pushed to; a trivial PR takes two self-review passes and no Codex round at all. The tier sets how DEEP a round is, never how many rounds you owe. Any real finding costs one more round, which is why the loop's whole job is to make each round complete. Setup proves Codex's sandbox can actually run tests, bind a socket and reach GitHub before round 1, because a reviewer that cannot run something reports no findings. Every request carries a COMPACT ledger of settled findings so Codex does not re-litigate them, round 5 folds a whole-PR direction check into the same call rather than spending a round on it, and the third finding against one symbol stops the case-by-case fixing and re-shapes the rule instead. Dispatch each Codex round the moment you push — NEVER wait for CI, since the two answer different questions and serialising them spends the longer twice; run rounds for several PRs concurrently in the background. Throughout the loop you monitor CI, sync main, and resolve conflicts. The loop can also conclude the PR should be CLOSED rather than merged. You report to the user once at the end, not every round. Merge only when both reviewers are OK and CI is green.
 ---
 
 # Codex Cross-Review
@@ -21,6 +21,7 @@ Five devices keep the count down. Each has its own section; this is the list so 
 3. **One batch, one push.** Every accepted fix from the round goes in together. → *Steps C, D, F*
 4. **Fix the CLASS, not the site.** A finding names a class of mistake; sweep the whole class this round, or each surviving site comes back as its own finding in its own round. → *Iteration step C*, point 2
 5. **The round-5 direction check rides in the same call** as that round's review, instead of costing a round of its own. → *Round 5*
+6. **Each round is dispatched the instant the push lands, never after CI** — CI gates the merge, not the review, and waiting turns a 3–8 minute round into a 20-minute one. → *Iteration step F-bis*
 
 And the exit bar is **one clean round**, at every tier. Two consecutive clean rounds was the old bar, dropped by the user's instruction on 2026-08-15. Depth moved into the round instead — which is what the tier now controls. The reason is recorded in *Exit*; do not restore the second round without reading it.
 
@@ -30,9 +31,9 @@ What this is NOT licence for: a shallower round, a skipped check, an unverified 
 
 Measured over the 91 loops with a ledger under `/tmp/codex-cross-review-*` (2026-08-21): **mean 7.4 rounds, median 5, longest 57**, and **62% of all 1,640 findings were raised in round 3 or later**. The long tail is not caused by hard PRs. It is caused by rounds that ran without being able to find anything:
 
-6. **The reviewer's sandbox is broken and nobody checked.** → *Setup step 8*
-7. **The same rule is patched case by case** until someone thinks to invert it. → *The third finding on one symbol*
-8. **A claim exists in four places and only one gets fixed.** → *The claims sweep*
+7. **The reviewer's sandbox is broken and nobody checked.** → *Setup step 8*
+8. **The same rule is patched case by case** until someone thinks to invert it. → *The third finding on one symbol*
+9. **A claim exists in four places and only one gets fixed.** → *The claims sweep*
 
 Two more make every round slower without making any of them wrong: the ledger pasted verbatim until it outweighs the diff (→ *The prompt carries a COMPACT ledger*), and one comment per Codex call until GitHub's rate limit blocks the loop outright (→ *ONE comment per round*).
 
@@ -73,13 +74,26 @@ The user supplies a PR URL (`https://github.com/<owner>/<repo>/pull/<N>`) or jus
    ```bash
    codex exec --model gpt-5.5 --sandbox workspace-write \
      -c 'sandbox_workspace_write.network_access=true' \
-     "Do not review anything. Run these four and report each command's EXIT CODE verbatim:
-        1. <the repo's test command>       — the suite the review will lean on
+     "Do not review anything. Run these and report each command's EXIT CODE verbatim:
+        1. <EVERY suite the review will lean on — ONE LINE EACH, see below>
         2. <the repo's typecheck command>
         3. node -e 'require(\"net\").createServer().listen(0,()=>process.exit(0))'
         4. curl -sS -o /dev/null -w '%{http_code}' https://api.github.com
-      Then say, in one line each: can you RUN tests, can you BIND a socket, can you
-      REACH api.github.com, and are file deletions permitted (try: touch /tmp/x && rm -f /tmp/x)."
+      Then say, in one line each: WHICH OF THE SUITES in 1 you could run, can you BIND
+      a socket, can you REACH api.github.com, and are file deletions permitted
+      (try: touch /tmp/x && rm -f /tmp/x)."
+   ```
+
+   **Item 1 is PLURAL, and writing it in the singular is how half a review goes blind.** A repo
+   with a backend suite and a frontend suite has two, and they fail INDEPENDENTLY — different
+   runners, different configs, different directories, and one of them green tells you nothing
+   about the other. Name each one in the probe, and hand Codex the invocation that WORKS rather
+   than the one in the README. In a worktree with symlinked `node_modules` that means
+   `--configLoader runner` on every vitest line, in the probe itself:
+
+   ```
+   1a. cd backend && npx vitest run --configLoader runner <one backend test file>
+   1b. npx vitest run --configLoader runner --dir src <one frontend test directory>
    ```
 
    Write the four answers into the ledger as row 0. Every one of these has failed in a real loop here, and each failure was invisible for many rounds because a reviewer that cannot run something reports *no findings*, which is indistinguishable from clean:
@@ -91,15 +105,47 @@ The user supplies a PR URL (`https://github.com/<owner>/<repo>/pull/<N>`) or jus
 
    **What a failing answer changes:** nothing is skipped, but a claim Codex cannot execute is recorded as UNVERIFIED, and you run that check yourself. Say so in the round's triage comment. If the sandbox cannot be repaired, Codex is a reader of the diff and not a runner of it, and every verdict in the loop carries that qualification.
 
-   **Hand it the test invocation that works.** With `node_modules` symlinked into a worktree,
-   vitest's bundled-config write path fails and `npx vitest run` errors out;
-   `npx vitest run --configLoader runner` works. Codex rediscovered that mid-round on its own,
-   which is review time spent on the harness rather than on the diff.
+   **Why that flag belongs IN the probe and not in a note beside it.** With `node_modules`
+   symlinked into a worktree, vitest's bundled-config write path cannot write
+   `node_modules/.vite-temp`, and the run dies at Vite startup with `EPERM` — before a single
+   test is collected. `--configLoader runner` does not write there and works.
+
+   This paragraph already existed, and was paid for again on 2026-09-21 (#3915): the backend
+   command was probed and the frontend command was not, so every page-side axis came back as a
+   READER's verdict for two rounds. Codex said so honestly each time, which is the only reason
+   it was recoverable. Round 3's prompt carried the flag and it ran the frontend suite at once.
+
+   **The flag was never the missing knowledge — applying it, to every suite, in the probe, was.**
+   A rule you have read and not executed costs exactly what not having it costs.
 
    **`rm` can stay blocked even with the network flag** — it is refused by policy, not by the
    sandbox mode. That is survivable, and the round has to say so out loud: **tell Codex not to
    run a mutation sweep**, because its restore will fail and every count it takes afterwards is
    measuring the harness. Offer instead to run any mutation it names.
+
+   **RE-SYNC `main` INTO THE BRANCH BEFORE THE ROUND, not just before the first one.** A round
+   reads the checkout, so a branch whose last `main` merge predates the PRs its own text describes
+   will produce findings that are TRUE of the branch and FALSE of `main` — and they read like the
+   reviewer being wrong. Measured on 2026-09-22: a documentation PR was rewritten to say three
+   defects had closed, and the round raised three MAJORs saying they had not. Both were right; the
+   branch was **thirty commits** behind, having merged `main` before two of the three landed. The
+   round was not wasted, but the fix was a merge rather than an edit.
+
+   So the pre-round checklist is: `git rev-list --count origin/<branch>..origin/main` is **0**, or
+   the round is reviewing a world that does not exist. State the head's sha in the prompt so the
+   reviewer can say which tree it read.
+
+   **ONE WORKING TREE, so two backgrounded rounds on DIFFERENT BRANCHES cannot overlap.** Codex
+   reads the checkout, not a snapshot of the diff. Dispatching a round for PR A and then checking
+   out PR B's branch — or dispatching a second round that checks out its own branch — leaves the
+   first reading whichever tree won, and it reports the fixes as unmade. Measured on 2026-09-22:
+   a round on a fix branch was dispatched while the tree sat on a docs branch, and it would have
+   raised every P1 again against code that no longer had the defect; it was killed and re-run.
+   The same collision silently invalidated a 1,442-file vitest run in the same session — nine
+   files "failed" because `git checkout` moved the tree under them.
+
+   So: **one round in flight per working tree.** Run rounds for different PRs sequentially, or give
+   each its own git worktree. And never `git checkout` while a round or a suite is running.
 
    **A `codex exec` that takes longer than the harness's per-call ceiling must run in the
    background** — and every backgrounded call needs `< /dev/null` and a `timeout`:
@@ -260,7 +306,22 @@ codex exec --sandbox workspace-write \
    it is indistinguishable from a clean axis until round three.
 
    ── EACH FINDING CARRIES FOUR THINGS ─────────────────────────────────────────
-   1. SEVERITY — P1 blocker / P2 should fix / P3 nit.
+   1. SEVERITY — P1 blocker / P2 should fix / P3 nit / N note.
+
+      **N is for a finding whose only remedy is editing PROSE** — a comment, a
+      docblock sentence, a plan file, the PR description. It does NOT block the
+      verdict and does NOT make the round CHANGES REQUESTED. List N findings under
+      the verdict; they are collected and fixed once, at the end, when the code has
+      stopped moving.
+
+      **A prose finding is P3 or higher, not N, when believing the sentence would
+      lead someone to make a WRONG CHANGE.** "This is measured before the first
+      await" when it is measured after; "the guard covers X" when it does not.
+      Those are code findings wearing prose, and they are worth a round.
+
+      Merely behind is N: a count that no longer matches, an enumeration the code
+      outgrew, a name that moved, a figure from an earlier commit. **Counts are the
+      recurring instance** — say so rather than filing each one.
    2. EVERY SITE. If the same mistake appears elsewhere in the repo, list every
       occurrence NOW — grep for it. A finding reported at one site and fixed at one
       site comes back next round as 'the same problem over here', which is the
@@ -285,8 +346,10 @@ codex exec --sandbox workspace-write \
 
    ── END WITH ONE TOP-LEVEL COMMENT, IN THIS ORDER ────────────────────────────
      Line 1, a verdict marker on its own line:
-       'CODEX VERDICT: LGTM' if you have no outstanding concerns
+       'CODEX VERDICT: LGTM' if you have no outstanding concerns ABOVE severity N
        'CODEX VERDICT: CHANGES REQUESTED' followed by a bulleted summary of remaining issues
+     N findings never change that line. An LGTM with a list of N notes under it is
+     the normal shape of a converged round, not a contradiction.
      Then the axis table: one row per axis above, findings or 'none'.
      Then, on its own line:
        'FINDINGS COMPLETE: I read every hunk of the diff and this is every finding I have.'
@@ -462,6 +525,36 @@ The saving is not one round. In the twenty-round loop above it was eleven, and t
 
 When reporting, attribute honestly: if an iteration's finding was a defect in your own earlier fix, say so. It tells the human which commits to read hardest.
 
+#### Do not ASK for prose findings, and do not pay a round for one
+
+The claims sweep below is about YOUR prose, swept once. This is about the reviewer's, and the two
+pull in opposite directions: a brief that names a "claims" axis every round, and praises the
+reviewer for having found false prose before, gets more of it — including the kind that changes
+nothing.
+
+Measured on one eight-PR series: **25 rounds, two of them spent entirely on a count in a docblock
+and then the same count in a plan file.** Both were filed P3, both turned the round into CHANGES
+REQUESTED, and neither changed a line of code. In the same series a prose finding *was* worth its
+round — a sentence saying a value was measured at request arrival when it was measured after an
+await, which the reviewer itself pointed out "a future extraction can trust and move the measurement
+to the wrong side of". That is the line: **would believing this sentence cause a wrong change?**
+
+So:
+
+- severity **N** exists for prose-only findings and does not block the verdict (see *EACH FINDING
+  CARRIES FOUR THINGS*). Collect them; fix them once, at the end.
+- do not put a standing "claims" axis in a tier-S brief at all. In tier C, word it as *"report a
+  sentence that would cause a WRONG CHANGE if believed; file anything merely behind as N"*.
+- never tell the reviewer it has found false prose before. It is a request, not a compliment, and it
+  is answered.
+- **when a count is the finding, fix the class rather than the instance** — delete the count. A
+  number in a sentence is checked by a person; a number in an assertion is checked by running. In
+  that same series the first count was corrected, and the next round found the second one.
+
+What this does NOT touch: a qualification attached to a "none". Those were real holes six times out
+of eight PRs in that series, each reproduced GREEN before being accepted, and they are the most
+valuable thing the reviewer produces. Reproduce every one.
+
 #### The claims sweep — every surface at once, or it comes back
 
 **A claim lives in up to four places, and the loop only ever fixes the one it was shown.** Measured over the ledgers: **128 findings across 41 of 88 PRs** are a comment, a test docblock, a PR body or a plan file saying something the code does not do — **the single largest preventable class here**, and 70% of them arrive in round 3 or later, which is exactly where a round is most expensive. Two shapes that cost the most:
@@ -568,6 +661,38 @@ fi
 - `git add` only the files you touched intentionally. Never `git add -A`.
 - Commit message: `fix: address codex review <iteration-<k>>` with a body listing the findings you accepted, in order. Include the current model's standard `Co-Authored-By` trailer.
 - `git push` — normal, no force.
+
+### Iteration step F-bis — dispatch the next Codex round IMMEDIATELY. Do NOT wait for CI.
+
+**Push, then call Codex in the same breath.** CI and the review answer different questions and
+share no dependency, so running them in series spends the longer of the two twice.
+
+Measured on this repo: `test (22.x)` runs **17–21 minutes** and `typecheck (22.x)` **14**, and
+`e2e` is only scheduled after those. A Codex round is **3–8 minutes**. Serialised, every round
+costs a CI cycle before the review even starts; in parallel the review is usually back *before*
+CI, so its findings are in hand when the checks land and the next push carries both.
+
+- **Dispatch Codex the moment the push lands.** Do not wait for a single check.
+- **Run them in the BACKGROUND, and run several PRs' rounds at once** — each `codex exec` is
+  independent. Three concurrent reviews on three PRs is normal and correct.
+- Always `< /dev/null` and `timeout` (see *Setup step 8*) — a backgrounded call without them
+  hangs on stdin forever and notifies nobody.
+- **CI still gates the MERGE.** Parallel dispatch changes when you *learn* things, never what
+  may ship: the exit bar is unchanged, and `Merge only when both reviewers are OK and CI is
+  green` still holds.
+
+**The failure this prevents is not slowness, it is a finding arriving too late to be cheap.**
+On 2026-09-15, three reviews were dispatched against heads whose CI was still running. One
+returned a P2 that **two prior reviewers — a Claude round and the coordinator — had both
+missed**: a guard asserting `readFileSync(...).includes(seed)`, which a rename had updated
+correctly and which was therefore satisfied **by a comment**. Codex found it by replacing the
+production seed with `false` while leaving the expression in a comment and watching the guard
+stay green. Had that round waited on CI, the finding would have landed after the PR was queued
+for approval.
+
+**When CI is the thing you are waiting on, say so and keep working.** A red check is a finding
+like any other — fold it into the next round rather than letting it stall the loop. And read a
+check by its conclusion, not by the run being over: a queued job is not a passing one.
 
 ### Iteration step G — decide whether to loop
 

@@ -8,9 +8,69 @@ A refactor's entire claim is **"this behaves the same"**. That claim is not prov
 
 Everything here was paid for. The examples are real and the numbers are measured.
 
+## What you are actually optimising for
+
+In order, and the order matters because they conflict:
+
+> **readable > small functions > testable as small pure units** — and *"the bound cleared"* is not on the list at all.
+
+A lint bound is a smoke alarm. It tells you where to look; it does not tell you what good looks like, and a change that satisfies it while making the file harder to read has failed. When the two disagree, say so in the PR and follow the list, not the number.
+
+**A closure is an allowed waypoint.** Moving a block into a closure captures the enclosing scope for free, which is exactly what makes it a cheap first step — no parameter list to design, no write-backs to thread. Take it when it gets you to a readable shape today, and say in the PR that it is a staging post rather than the destination. What you must not do is let "it would nest" veto a shape that reads better: nesting is a lint setting, not an observable.
+
+### The real fix is upstream: design it split, and do not reach for `let`
+
+Everything below this line is cure. The cheap version is prevention, and one measurement predicts nearly all of it:
+
+> **A region's extraction cost is the number of loop-carried `let`s it writes.**
+
+Measured on one 433-line loop body, three adjacent regions:
+
+| region | captures | writes a loop-carried `let` | what extraction cost |
+|---|---|---|---|
+| A | 7 | **0** | lifts as-is, nothing threaded |
+| B | 6 | **1** | needs one value returned and assigned at the call site |
+| C | 15 | **4** | **cannot** go to module scope without four write-backs — and **dropping one still type-checks**, silently discarding every message's text |
+
+Region C is not hard because it is long. It is hard because four mutable cells outlive the iteration, and each one is a wire that has to be re-attached by hand at a site where nothing checks that you did.
+
+So, when writing the code in the first place:
+
+- **Prefer a value returned over a cell mutated.** `const next = step(prev)` extracts later for free; `let acc; …; acc = x` does not.
+- **A `let` that crosses an iteration is a future extraction blocker** — it is the thing that turns a 40-line lift into a four-way write-back. If you need accumulated state, accumulate it *into the return value* and assign once.
+- **Split at the decision, not at the length.** A function assembled from named rules each taking a plain object is already testable; one assembled from 400 lines of sequenced I/O is not, whatever its line count.
+- **The name that must not exist is the one only one branch uses.** Every name in scope is paid for by every reader of the whole function, not just the branch that needs it.
+
+The diagnostic for an existing function is the same measurement: **how many names does it hold in scope, and how many mutable cells cross an iteration?** That number is what a reader pays and what the next extraction will cost. A lint rule is indifferent to both.
+
 ## Before you start: establish what is actually there
 
 Four questions set the size and the shape of the change. Each is cheap to answer and expensive to guess.
+
+### Which code, though? The target is chosen, and choosing badly costs the whole campaign
+
+This file starts where most advice starts: you have a function and you are about to move it. But a
+*campaign* — clear the untested surface of a repository — spends most of its risk in the step
+before that, and there is no second chance at it: a target you pick wrongly is a PR, a review loop
+and a merge spent on something that did not need doing.
+
+Three measurements rank targets, and they take minutes:
+
+- **Is it untested at all?** For every exported symbol, does any test name it?
+  `for n in $(grep -oE "^export const [a-zA-Z0-9_]+" f.ts | awk '{print $3}'); do grep -rlw "$n" test/ || echo "untested: $n"; done`
+  A file with tests can still have untested exports, and those are the cheapest wins.
+- **What does the file drag in?** `grep -E "^import" f.ts` and look for the heavy edge — a
+  database client, an SDK that initialises on import, a DOM API. **Pure logic sitting in a file
+  that imports one of those is untestable for a reason that has nothing to do with the logic**,
+  and that is the highest-value shape you can find: the fix is a move, not a rewrite.
+- **What breaks if it is wrong?** Money, a permission boundary, a path that separates one
+  tenant's data from another's, something printed on a receipt. Rank by this, not by line count.
+
+The trap is picking by what is *easy to test* rather than by what is *worth testing*. Style
+constants, presentation values, a comparator's exact return magnitude — all easy, all worth
+nothing. A sweep that mutates every literal in a file will hand you dozens of "gaps" in font
+sizes and margins; those are data, not decisions, and pinning them buys a test that goes red
+when someone adjusts a layout.
 
 ### Is the code you are about to touch even reachable?
 
@@ -84,6 +144,91 @@ For each finding ask **what breaks if the rule is right**. If the answer is "not
 
 Record the reason **per rule**. Two rules disabled in one commit for one shared reason is usually one real reason and one unexamined one: a rule whose diagnostic describes a cost that exists whether or not your build runs the tool it names is not the same case as a rule that cannot be true in your build at all.
 
+### The rule's counter is not the reader's counter, and optimising the wrong one goes backwards
+
+`max-lines-per-function` in most configs counts with `skipBlankLines` and `skipComments`. `wc -l` does not. **They move independently, and a refactor can improve one while making the other worse.**
+
+> One change extracted a decision out of a 433-line function. Measured afterwards: the **counted** metric fell by 1 per function, and the **raw** line count grew by 12 — the extraction added a docblock and a type. The PR could honestly report "the function got smaller" while every reader of the file had more to scroll past.
+
+So: **name the unit on every number**, and report both when the goal is comprehension. A costing in one session was nearly wrong because "~55 of its 87 lines are the loop" (raw) was compared against "the split bought 12" (counted); converted to one unit, the two options were about equal, and the refusal built on the comparison dissolved.
+
+If the brief is *"this function is too big"*, the number that answers it is **raw**. If the brief is *"clear the warning"*, it is counted. They are different jobs and a refactor that serves one can betray the other.
+
+### A ratchet is a record of decisions, not a constraint on their shape
+
+A repo that ratchets lint rules has, by construction, a mechanism for saying *"this file is a deliberate exception, here is why"*. Forgetting that turns the ratchet from a ledger into a fence.
+
+> An extraction read best as a closure inside an existing nested function. That trips `sonarjs/no-nested-functions` at `error`, so it fails the build — and the change was declined on that basis. The user overruled it: nesting is a **lint setting**, not a behaviour, and the repo ratchets exactly this kind of rule with a written reason. Choosing a worse-reading shape to keep a number green is the inversion the whole exercise exists to prevent.
+
+The test is whether the objection names an **observable**. A microtask, a nesting level, a line count — none of those is one. A reordered write, a dropped value, a guard that stops firing — those are. **Pick the shape that reads best; if it needs a ratchet entry, write the entry and put the reason in it.**
+
+### Four passes at one function, each asking "does it clear the bound", is four wrong questions
+
+A function that has been refactored repeatedly without getting smaller is usually being measured against the wrong target.
+
+> One 433-line function took four separate tranches. Each asked whether the bound would clear; none did, and each shipped a costed refusal. What nobody measured until the fourth was **how many names the function holds in scope** — 34 at the top level, 7 of them loop-carried `let`s. That number is what a reader actually pays, it was never the lint rule's subject, and it moves under changes the rule is indifferent to.
+
+Before the next pass at a function that has resisted several, measure the thing the reader experiences: **names in scope, mutable cells crossing an iteration, and raw length**. If the lint bound and those numbers disagree about whether progress was made, the bound is not the goal — say so in the PR rather than reporting the metric that flatters the change.
+
+## Reaching the code without moving it at all
+
+The ranking near the top of this file — *a decision made testable > a block moved with its
+behaviour proved > a block moved with its behaviour argued > nothing* — is missing its best
+outcome, because it assumes the code has to move.
+
+> **Better than any of them: reach the code where it already is.** No diff, no equivalence claim,
+> no review of a change. The only thing that can regress is nothing.
+
+This is usually possible and usually not tried, because the code *looks* unreachable. Three
+shapes and what they actually need:
+
+- **A framework hook that refuses to run outside its frame.** A component-scoped API throws when
+  called from a plain function — but the frame is cheap to build. Rendering one minimal component
+  to a string is enough to make a `setup`-scoped call legal, and that single helper then unlocks
+  every function in the codebase that was "untestable because it uses the framework".
+- **A global container the code resolves implicitly.** A store, a DI registry, a context. These
+  almost always expose a way to install an instance for the current scope; do that in the test's
+  setup and the code under test needs no argument it did not already take.
+- **Ambient values read from the environment** — the clock, the locale, the URL. Install a fixed
+  one for the test rather than threading a parameter through the implementation.
+
+One session found a 300-line function computing every collection slot a customer may choose —
+the highest-value untested surface in the repository — and it needed **no production change at
+all**. What had made it look untestable was a framework import at the top of the file.
+
+Build the frame once, keep it in `test/helpers/`, and say in its comments what each part is for.
+Every later target that touches the same framework costs nothing.
+
+### A lazily-evaluated result read outside the frame is the trap this creates
+
+The harness above installs something — a locale, a clock, a stubbed global — for the duration of
+a call. **A function that returns a lazy value has not read any of it yet.** Read the value after
+the frame closes and you get an error from deep inside the framework, or worse, a silently
+different answer.
+
+Measured in one session: **four times in a row**, on four unrelated functions. A computed URL
+that read a stubbed global; a computed asset name that read the locale; a whole composable whose
+every field re-derived on access; and a translation call inside a `reduce`. Each looked like a
+broken harness and each was the same mistake.
+
+The rule is one line: **read `.value` — and assert on it — inside the frame, not outside.** Have
+the helper return the *resolved* data, never the lazy container:
+
+```ts
+// wrong: the frame closed before anything was read
+const link = await runInFrame(() => buildLink(props));
+expect(link.value).toBe(...);
+
+// right: the read happens where the frame is still installed
+const link = await runInFrame(() => buildLink(props).value);
+```
+
+The same applies to any stub with a lifetime — a replaced global, a frozen clock, a swapped
+locale. **And it applies to arguments too**: an argument is evaluated *before* the function it is
+passed to, so a helper that installs the frame inside itself cannot cover a fixture built in its
+own argument list. That one cost a review round and reproduced only in a timezone the author did
+not run.
+
 ## Proving equivalence: run both, do not reason
 
 Copy the OLD code verbatim into a throwaway harness, run it beside the new code over generated inputs, compare whole results, report the count, then delete the harness.
@@ -125,6 +270,41 @@ The blind spots repeat, and they are worth generating deliberately:
 - **the field carried on the prototype instead of owned** — `Object.create({field})`, a class with a getter, a subclass
 - **keys every object already has** — `constructor`, `__proto__`, `toString`. `JSON.parse('{"__proto__":…}')` makes one; an object *literal* does not, which is its own trap below
 - **the same value at two positions** — first and last, so "reads the first" is distinguishable from "reads the last" *and* from "reads whichever one has a value"
+
+### A mutation that produces nothing may be a RESULT, not a blind generator
+
+The rule above — *a zero from a mutation means the generator is blind there* — has an exception
+that will otherwise send you generating inputs for a difference that cannot exist. Some mutations
+are **equivalent**: they change the source and cannot change the answer.
+
+Three that keep appearing:
+
+- **`?? → ||` where the default equals the falsy value.** `(list ?? []).length` and
+  `(list || []).length` differ only for a falsy non-nullish `list`, and an array never is one.
+- **A type guard whose runtime clause is redundant.** `!(x instanceof Date) && Boolean(x.seconds)`
+  mutated to `Boolean(x.seconds)` changes nothing, because a `Date` has no `seconds`. The
+  `instanceof` is there for the *narrowing*, not for the runtime.
+- **A comparator's magnitude.** `? 1 : -1` mutated to `? 2 : -1` is the same sort.
+
+Tell them apart by **stating why no input can distinguish the two**, in one sentence, and putting
+that sentence in the record. If you cannot write the sentence, it is a blind generator and the
+generator is what to fix. What you must not do is quietly drop the case: "we mutated it and
+nothing happened" reads identically for an equivalent mutation and for a hole.
+
+### A comparator is not proved equivalent by the array it sorts
+
+The obvious harness for a changed comparator generates random arrays, sorts with old and new, and
+compares the order. **That is smoke coverage, not a proof**, and the reason is specific: a
+comparator that never returns `0` leaves the engine free to order ties however its algorithm
+happens to. Two comparators that genuinely disagree on ties can produce identical output on every
+array you generate, and one that agrees can produce different output.
+
+Compare the **pairwise return values** instead — every ordered pair of generated elements, old
+against new. That is the thing the caller's sort is a function of, and it has no engine-dependent
+freedom in it.
+
+This was a reviewer's correction to a harness that had already reported zero differences over
+hundreds of arrays. The conclusion held; the argument did not.
 
 ### A comparison that compares nothing reports zero
 
@@ -259,6 +439,48 @@ Consumers of an untyped read are written in terms of truthiness: `||` fallbacks,
 
 Expect this at *every* site the parser feeds, not at one. It is the most repeatable defect of this kind of change, and each instance looks locally correct.
 
+### A declaration narrower than reality is what blocks the test, and there are four ways out
+
+The sections around this one are about *adding* a type to an untyped edge. The commoner problem
+in a codebase that already has types is the opposite: **a declaration that is wrong, in the
+narrow direction**, and the way you find out is that a test cannot express the input the code
+plainly handles.
+
+Three real ones from one repository, each discovered by trying to write a test:
+
+| declared | what the code and the UI actually do |
+|---|---|
+| `{ [day: string]: string[] }` | every reader treats it as a boolean; the default value in the repo's own source is `{1: true}` |
+| `{ start: number; end: number }[]` | the input component *deletes* the key, so half-filled entries arrive |
+| `{ toDate(): Date }[]` | one screen converts to a plain `Date` before passing it on |
+
+The tell is always the same: **a guard in the code defends against a shape the type says cannot
+exist.** That guard is evidence, and it outranks the declaration.
+
+Four ways out, in the order to prefer them:
+
+1. **Correct the declaration.** Types are erased, so *no emitted code changes* — the only risk is
+   a build failure, which the gates catch. Prove the claim rather than asserting it: compile the
+   file before and after and diff the emitted JS, and if the project has a template-aware checker
+   that CI does not run, run it yourself and compare the counts. Correcting it often *unlocks*
+   a test elsewhere that had been written to satisfy the lie.
+2. **Narrow the parameter to what the function uses.** A function that reads two fields of a
+   large object should say so; callers still pass the large object, and the test passes two
+   fields. This needs no change to the type the rest of the system shares.
+3. **Extract the rule with an honest type.** When the shape only exists inside one loop, lift
+   that loop into a function whose parameter says what actually arrives — and prove the lift the
+   way this file says to prove any lift.
+4. **A costed no.** Say what the type asserts, what the code does, which input you therefore
+   cannot express, and file it. Then test everything else. A coverage gap you have written down
+   is worth more than a type change you cannot verify.
+
+**Correcting a declaration can force a narrowing you did not plan.** Widening one to a union made
+a `x.seconds ? … : …` test illegal, because the union does not have that property on both arms.
+That became a type guard — and the guard had to keep the original *truthiness* test rather than
+tidying it to `!== undefined`, because those differ for `0` and `NaN`. Old against new over ten
+shapes including exactly those: identical. Mutating the guard to `!== undefined`: two differences.
+The tidy version would have shipped.
+
 ### One unreadable element must not discard the collection
 
 The instinct when typing a list is to declare the element type and let the parse fail. That turns one malformed entry into an empty collection — and empty is usually rendered, counted or iterated as *nothing here*, where the untyped code carried on with everything else.
@@ -314,6 +536,23 @@ Two follow-ons worth stating, both learned the same day:
 **Search for existing coverage before adding some.** A weaker duplicate of a check that already exists is worse than nothing, because it reads as coverage.
 
 **Ask whether the property is one you want before pinning it.** The characteristic mistake of a long refactoring session is writing tests that *describe* what you have just built rather than interrogate it. They pass immediately, they read as careful coverage, and they make the defect permanent — the more thorough they look, the longer it survives. Before asserting a behaviour, say plainly whether it is better or worse than the one it replaced.
+
+### When one rule is written twice, test that the two agree
+
+Some rules exist in two places by necessity — a price computed in the browser so the customer can
+see it, and again on the server so the charge is right; a validation the UI runs for feedback and
+the API runs for safety. Nothing links the copies. Editing one and not the other produces no
+error, no failing test, and a defect whose symptom is *the two numbers differ*, which is exactly
+the thing neither side can notice.
+
+**Write the test that calls both and asserts they agree.** It is usually a dozen lines and it is
+the only thing that can fail when the copies drift.
+
+Two practical points. It goes on **whichever side can import the other** — often only one can,
+because of build boundaries or dependencies. And break-verify it in the direction that matters:
+mutate one side only, in the way a well-meaning tidy-up would (rounding a value, reordering a
+branch), and confirm the test goes red. A version that passes because both sides were mutated
+together is measuring nothing.
 
 ## The mutation sweep is the thing that checks all of the above, and it fails too
 
@@ -382,6 +621,58 @@ Trace the reason into the source, link by link, before writing it into a commit 
 - **CI may not run what you assume.** Check the job list. A build step that no job runs is a step nothing checks.
 - **Timing is not evidence.** A before/after pair of a noisy measurement is one sample. `5.6s → 886ms` looked like proof that a stub removed a network call, until the *unstubbed* file ran in 1.02s. Justify the change by what it does — the call happens or it does not — never by the clock.
 - **A slow tool is not a broken tool.** A reviewer process that produced one line in 45 minutes was diagnosed as "the prompt never reached it, it is waiting on stdin" — that line turned out to be its normal first output, present in every successful run too. The actual cause was a load average of 36 from other work on the machine. Before declaring a tool broken from its output, check the same output in a run that worked.
+
+### Your working tree contains files git does not, and CI builds from git
+
+The section below says the artefact CI builds is not the branch you tested, because mainline
+moves. There is a second, quieter version of the same thing, and it does not need anyone else to
+push: **your checkout has files that are not in the repository.**
+
+Every project generates some — a config copied from a template during setup, a file a build step
+writes, a directory another tool's deploy hook populates. They sit in your tree looking exactly
+like source. Import one from a test and it resolves locally, type-checks locally, passes locally,
+and **fails on the first fresh checkout**.
+
+> A test asserting that a front-end rule agreed with its back-end twin imported the back-end
+> module. Two reviewers passed it. CI failed with `Cannot find module '../../models/…'` — that
+> module is copied from the front end by a deploy hook and has never been committed. The tree had
+> a copy from an earlier deploy.
+
+The check costs one command and is the only one that settles it:
+
+```bash
+git archive HEAD | tar -x -C /tmp/tracked   # exactly what CI gets
+# plus whatever setup CI itself runs — read the workflow, do not guess
+ln -s "$PWD/node_modules" /tmp/tracked/node_modules
+cd /tmp/tracked && <the test command>
+```
+
+Two details decide whether it means anything. **Read the CI workflow for its setup steps** and
+reproduce them — the first attempt at this check failed for a missing generated config, which is
+itself the lesson. And **`git ls-files <path>` is the fast pre-check**: before importing anything
+from an unusual directory, ask git whether it has ever heard of it, transitively.
+
+When the file you need is untracked but its *source* is tracked, prefer the source. When the
+thing you need only exists on the other side of the boundary, **put the test on that side** —
+whichever side can import both is where the comparison belongs.
+
+### A test that reads the clock, the timezone or the locale is a test that fails somewhere else
+
+Anything deriving a date, a weekday or a formatted time is a function of the machine, and your
+machine is not the runner. This is not hypothetical: a date asserted as a literal string passed
+in one zone and failed nine hours west, on a runner nobody would have thought to try.
+
+- **Freeze the clock** for the file, with whatever the test runner offers. Then the implementation's
+  own `new Date()` calls — usually several, usually not injectable — all agree with each other
+  and with the test.
+- **Derive every fixture from the frozen instant**, never from the real one. And remember the
+  argument-evaluation order: a helper that freezes internally cannot cover a date built in its
+  own argument list.
+- **Never assert a formatted date as a literal.** Compute the expected value from the same
+  instant with plain date arithmetic — independent of the implementation's formatter, and correct
+  in every zone.
+- **Run the suite in zones on both sides of the date line** before believing it. `TZ=…` in front
+  of the command is the whole test; pick one east of the line and one west.
 
 ### What a green suite does not prove
 
